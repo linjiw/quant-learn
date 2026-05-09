@@ -68,8 +68,19 @@ AMD_COST_LABELS = {
     "Embedded": ("Embedded", "cost_and_operating_expenses"),
 }
 
+AMD_OPERATING_LABELS = {
+    "Data Center": ("Data Center", "operating_income"),
+    "Client": ("Client", "operating_income"),
+    "Gaming": ("Gaming", "operating_income"),
+    "Client and Gaming": ("Client and Gaming", "operating_income"),
+    "Embedded": ("Embedded", "operating_income"),
+}
 
-def build_sec_segment_kpis(tickers: Optional[list[str]] = None, max_filings: int = 12) -> pd.DataFrame:
+
+def build_sec_segment_kpis(
+    tickers: Optional[list[str]] = None,
+    max_filings: int = 16,
+) -> pd.DataFrame:
     """Extract segment KPIs from official SEC filing HTML tables."""
 
     initialize_database()
@@ -204,7 +215,11 @@ def _extract_nvda_table(
         value = _value_for_label(table, columns, label)
         if value is None:
             continue
-        kpi_group = "product_category" if label in {"Compute & Networking", "Graphics"} else "end_market"
+        kpi_group = (
+            "product_category"
+            if label in {"Compute & Networking", "Graphics"}
+            else "end_market"
+        )
         rows.append(_kpi_row(filing, period_end, kpi_group, segment_name, kpi_name, value))
     return rows
 
@@ -216,45 +231,69 @@ def _extract_amd_table(
     filing: pd.Series,
 ) -> list[dict]:
     text = _table_text(table)
-    if "Net revenue:" not in text or "Cost of sales and operating expenses:" not in text:
+    if "Net revenue:" not in text:
+        return []
+    if "Cost of sales and operating expenses:" not in text and "Operating income" not in text:
         return []
 
     rows = []
     revenue_marker = _first_label_index(table, "Net revenue:")
     cost_marker = _first_label_index(table, "Cost of sales and operating expenses:")
+    operating_marker = _first_label_index(table, "Operating income")
+    revenue_end = cost_marker if cost_marker is not None else operating_marker
     revenue_by_segment: dict[str, float] = {}
     cost_by_segment: dict[str, float] = {}
 
     for label, (segment_name, kpi_name) in AMD_REVENUE_LABELS.items():
-        value = _value_for_label(table, columns, label, start_row=revenue_marker, end_row=cost_marker)
+        value = _value_for_label(
+            table,
+            columns,
+            label,
+            start_row=revenue_marker,
+            end_row=revenue_end,
+        )
         if value is None:
             continue
         revenue_by_segment[segment_name] = value
-        rows.append(_kpi_row(filing, period_end, "reportable_segment", segment_name, kpi_name, value))
-
-    for label, (segment_name, kpi_name) in AMD_COST_LABELS.items():
-        value = _value_for_label(table, columns, label, start_row=cost_marker)
-        if value is None:
-            continue
-        cost_by_segment[segment_name] = value
-        rows.append(_kpi_row(filing, period_end, "reportable_segment", segment_name, kpi_name, value))
-
-    for segment_name, revenue in revenue_by_segment.items():
-        if segment_name not in cost_by_segment:
-            continue
         rows.append(
-            _kpi_row(
-                filing,
-                period_end,
-                "reportable_segment",
-                segment_name,
-                "operating_income",
-                revenue - cost_by_segment[segment_name],
-                is_reported=False,
-                is_derived=True,
-                derivation_method="revenue_minus_cost_and_operating_expenses",
-            )
+            _kpi_row(filing, period_end, "reportable_segment", segment_name, kpi_name, value)
         )
+
+    if cost_marker is not None:
+        for label, (segment_name, kpi_name) in AMD_COST_LABELS.items():
+            value = _value_for_label(table, columns, label, start_row=cost_marker)
+            if value is None:
+                continue
+            cost_by_segment[segment_name] = value
+            rows.append(
+                _kpi_row(filing, period_end, "reportable_segment", segment_name, kpi_name, value)
+            )
+
+        for segment_name, revenue in revenue_by_segment.items():
+            if segment_name not in cost_by_segment:
+                continue
+            rows.append(
+                _kpi_row(
+                    filing,
+                    period_end,
+                    "reportable_segment",
+                    segment_name,
+                    "operating_income",
+                    revenue - cost_by_segment[segment_name],
+                    is_reported=False,
+                    is_derived=True,
+                    derivation_method="revenue_minus_cost_and_operating_expenses",
+                )
+            )
+
+    if operating_marker is not None:
+        for label, (segment_name, kpi_name) in AMD_OPERATING_LABELS.items():
+            value = _value_for_label(table, columns, label, start_row=operating_marker)
+            if value is None:
+                continue
+            rows.append(
+                _kpi_row(filing, period_end, "reportable_segment", segment_name, kpi_name, value)
+            )
     return rows
 
 

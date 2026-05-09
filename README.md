@@ -20,8 +20,10 @@ The first version is deliberately a research system, not an auto-trading system.
 7. Manual CSV import path for verified segment KPIs
 8. Event-level return windows and data-quality flags in `event_returns`
 9. Rule-based event review summaries in `event_reviews`
-10. Flexible segment KPI layer with `segments_view` and `segment_features`
-11. Standardized SEC-derived `fundamentals_quarterly` research snapshots
+10. SEC-derived segment KPI extraction for GOOGL/NVDA/AMD filing tables
+11. Flexible segment KPI layer with `segments_view` and `segment_features`
+12. Event data-quality markdown report
+13. Standardized SEC-derived `fundamentals_quarterly` research snapshots
 
 For the design rationale and table definitions, see `docs/system_design.md`.
 For the current loophole audit, see `docs/strategy_loopholes.md`.
@@ -74,6 +76,7 @@ uv run python -m scripts.import_event_impacts data/manual/event_impacts_ai_compu
 uv run python -m scripts.import_event_metrics data/manual/event_metrics_ai_compute.csv
 uv run python -m scripts.build_event_returns --benchmarks QQQ SOXX SMH
 uv run python -m scripts.build_event_reviews
+uv run python -m scripts.build_event_data_quality_report
 ```
 
 `events` records the event itself, `event_impacts` records which stocks the event can
@@ -86,15 +89,23 @@ and data-quality status.
 Manual segment KPIs:
 
 ```bash
-uv run python -m scripts.import_segments data/manual/segment_kpis_template.csv
+uv run python -m scripts.import_segments data/manual/segment_kpis_googl.csv
+uv run python -m scripts.import_segments data/manual/segment_kpis_nvda.csv
+uv run python -m scripts.import_segments data/manual/segment_kpis_amd.csv
+uv run python -m scripts.import_segments data/manual/segment_kpis_tsm.csv
 uv run python -m scripts.build_tsmc_segment_kpis --months 24
+uv run python -m scripts.build_sec_segment_kpis --tickers GOOGL NVDA AMD --max-filings 16
+uv run python -m scripts.build_company_segment_kpis --tickers GOOGL NVDA AMD --quarters 8
 uv run python -m scripts.build_segment_features
 uv run python -m scripts.build_segment_dashboard
 ```
 
 `segment_kpis` is manual-first for company segment disclosures. TSMC monthly revenue is
-bridged automatically from the official `tsmc_monthly_revenue` table; GOOGL/NVDA/AMD
-segment rows should be curated from earnings releases or filings before import.
+bridged automatically from the official `tsmc_monthly_revenue` table. GOOGL/NVDA/AMD
+segment rows can be extracted from official SEC filing tables with
+`build_sec_segment_kpis`; review the exported CSV before treating any extracted value
+as investment evidence. The split files under `data/manual/segment_kpis_*.csv` are the
+versioned, reviewable seed set for the AI compute segment layer.
 
 SEC-derived quarterly fundamentals:
 

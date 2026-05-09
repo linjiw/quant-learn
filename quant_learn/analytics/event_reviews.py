@@ -32,6 +32,7 @@ def build_event_reviews() -> pd.DataFrame:
         ).fetchdf()
         returns = conn.execute("SELECT * FROM event_returns").fetchdf()
         metrics = conn.execute("SELECT * FROM event_metrics").fetchdf()
+        segment_features = conn.execute("SELECT * FROM segment_features").fetchdf()
 
     if events.empty:
         return pd.DataFrame()
@@ -44,6 +45,7 @@ def build_event_reviews() -> pd.DataFrame:
             & (returns["affected_ticker"] == event["affected_ticker"])
         ]
         event_metrics = metrics[metrics["event_id"] == event["event_id"]]
+        event_segment_features = _event_segment_features(event, segment_features)
         data_quality_flag = _review_quality(event_returns)
         confidence = _review_confidence(event, event_returns, event_metrics, data_quality_flag)
 
@@ -57,6 +59,12 @@ def build_event_reviews() -> pd.DataFrame:
                 "raw_reaction_summary": _raw_reaction_summary(event_returns),
                 "benchmark_attribution_summary": _benchmark_attribution_summary(event_returns),
                 "metric_surprise_summary": _metric_surprise_summary(event_metrics),
+                "linked_segment_features": _linked_segment_features(event_segment_features),
+                "linked_kpi_ids": _linked_kpi_ids(event_segment_features),
+                "fundamental_context_summary": _fundamental_context_summary(
+                    event,
+                    event_segment_features,
+                ),
                 "interpretation": _interpretation(event_returns, data_quality_flag),
                 "thesis_impact": _thesis_impact(event),
                 "confidence": confidence,
@@ -124,6 +132,61 @@ def _metric_surprise_summary(event_metrics: pd.DataFrame) -> str:
             f"surprise {_fmt_pct(metric['surprise_pct'])}"
         )
     return "Metric evidence: " + "; ".join(parts) + "."
+
+
+def _event_segment_features(event: pd.Series, segment_features: pd.DataFrame) -> pd.DataFrame:
+    if segment_features.empty:
+        return pd.DataFrame()
+    reaction_date = pd.to_datetime(event["reaction_date"], errors="coerce")
+    if pd.isna(reaction_date):
+        return pd.DataFrame()
+    ticker_features = segment_features[
+        segment_features["ticker"] == event["affected_ticker"]
+    ].copy()
+    if ticker_features.empty:
+        return pd.DataFrame()
+    ticker_features["date"] = pd.to_datetime(ticker_features["date"], errors="coerce")
+    ticker_features = ticker_features[ticker_features["date"] <= reaction_date]
+    if ticker_features.empty:
+        return pd.DataFrame()
+    return (
+        ticker_features.sort_values(["feature_name", "date"])
+        .groupby("feature_name", group_keys=False)
+        .tail(1)
+        .sort_values(["date", "feature_score", "feature_name"], ascending=[False, False, True])
+    )
+
+
+def _linked_segment_features(event_segment_features: pd.DataFrame) -> str:
+    if event_segment_features.empty:
+        return ""
+    return ",".join(event_segment_features["feature_name"].astype(str).tolist())
+
+
+def _linked_kpi_ids(event_segment_features: pd.DataFrame) -> str:
+    if event_segment_features.empty:
+        return ""
+    values = []
+    for source_ids in event_segment_features["source_kpi_ids"].dropna().astype(str):
+        values.extend(item for item in source_ids.split(",") if item)
+    return ",".join(dict.fromkeys(values))
+
+
+def _fundamental_context_summary(event: pd.Series, event_segment_features: pd.DataFrame) -> str:
+    if event_segment_features.empty:
+        return "No point-in-time segment feature context is available for this event yet."
+
+    parts = []
+    for _, row in event_segment_features.iterrows():
+        parts.append(
+            f"{row['feature_name']} {row['direction']} "
+            f"(score {_fmt_score(row['feature_score'])})"
+        )
+    return (
+        f"Latest available {event['affected_ticker']} segment context before the event: "
+        + "; ".join(parts)
+        + "."
+    )
 
 
 def _interpretation(event_returns: pd.DataFrame, data_quality_flag: str) -> str:
@@ -217,3 +280,9 @@ def _fmt_pct(value: object) -> str:
     if pd.isna(value):
         return "n/a"
     return f"{float(value) * 100:.1f}%"
+
+
+def _fmt_score(value: object) -> str:
+    if pd.isna(value):
+        return "n/a"
+    return f"{float(value):.0f}"

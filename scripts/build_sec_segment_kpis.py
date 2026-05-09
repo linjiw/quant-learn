@@ -8,7 +8,7 @@ from quant_learn.config import EXPORT_DIR, ensure_directories
 def main() -> None:
     parser = argparse.ArgumentParser(description="Extract segment KPIs from official SEC filings.")
     parser.add_argument("--tickers", nargs="*", default=["GOOGL", "NVDA", "AMD"])
-    parser.add_argument("--max-filings", type=int, default=12)
+    parser.add_argument("--max-filings", type=int, default=16)
     parser.add_argument("--export", default="sec_segment_kpis.csv")
     args = parser.parse_args()
 

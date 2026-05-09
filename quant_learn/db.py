@@ -536,6 +536,7 @@ def _create_segment_views(conn: duckdb.DuckDBPyConnection) -> None:
                 kpi_value,
                 source_url,
                 source_accession_number,
+                filed_date,
                 confidence
             FROM segment_kpis
             WHERE kpi_group IN ('segment', 'reportable_segment', 'end_market', 'platform')
@@ -553,8 +554,21 @@ def _create_segment_views(conn: duckdb.DuckDBPyConnection) -> None:
                 MAX(CASE WHEN kpi_name = 'operating_income' THEN kpi_value END)
                     AS segment_operating_income,
                 MAX(CASE WHEN kpi_name = 'margin' THEN kpi_value END) AS reported_margin,
+                STRING_AGG(
+                    CASE WHEN kpi_name = 'revenue' THEN segment_kpi_id END,
+                    ','
+                ) AS segment_revenue_source_kpi_ids,
+                STRING_AGG(
+                    CASE WHEN kpi_name = 'operating_income' THEN segment_kpi_id END,
+                    ','
+                ) AS segment_operating_income_source_kpi_ids,
+                STRING_AGG(
+                    CASE WHEN kpi_name = 'margin' THEN segment_kpi_id END,
+                    ','
+                ) AS reported_margin_source_kpi_ids,
                 MAX(source_url) AS source_url,
                 MAX(source_accession_number) AS source_accession_number,
+                MAX(filed_date) AS available_date,
                 MAX(confidence) AS confidence,
                 STRING_AGG(segment_kpi_id, ',') AS source_kpi_ids
             FROM segment_rows
@@ -573,6 +587,21 @@ def _create_segment_views(conn: duckdb.DuckDBPyConnection) -> None:
                 reported_margin,
                 segment_operating_income / NULLIF(segment_revenue, 0)
             ) AS segment_margin,
+            segment_revenue_source_kpi_ids,
+            LAG(segment_revenue_source_kpi_ids, 4)
+                OVER (PARTITION BY ticker, segment_name ORDER BY period_end)
+                AS prior_year_segment_revenue_source_kpi_ids,
+            CASE
+                WHEN reported_margin IS NOT NULL THEN reported_margin_source_kpi_ids
+                WHEN segment_operating_income_source_kpi_ids IS NULL
+                    THEN segment_revenue_source_kpi_ids
+                WHEN segment_revenue_source_kpi_ids IS NULL
+                    THEN segment_operating_income_source_kpi_ids
+                ELSE
+                    segment_operating_income_source_kpi_ids
+                    || ','
+                    || segment_revenue_source_kpi_ids
+            END AS segment_margin_source_kpi_ids,
             segment_revenue
                 / NULLIF(
                     LAG(segment_revenue, 4)
@@ -582,6 +611,7 @@ def _create_segment_views(conn: duckdb.DuckDBPyConnection) -> None:
                 - 1 AS segment_revenue_growth_yoy,
             source_url,
             source_accession_number,
+            available_date,
             confidence,
             source_kpi_ids
         FROM pivoted
