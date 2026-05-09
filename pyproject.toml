@@ -1,0 +1,36 @@
+[project]
+name = "quant-learn"
+version = "0.1.0"
+description = "Focused quant research system for GOOGL, NVDA, AMD, and TSM."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "beautifulsoup4>=4.12.3",
+    "duckdb>=1.1.3",
+    "lxml>=5.3.0",
+    "matplotlib>=3.9.4",
+    "numpy>=1.26.4",
+    "pandas>=2.2.3",
+    "requests>=2.32.3",
+    "statsmodels>=0.14.4",
+    "tabulate>=0.9.0",
+    "yfinance>=0.2.54",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.4",
+    "ruff>=0.9.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["UP006", "UP007"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
