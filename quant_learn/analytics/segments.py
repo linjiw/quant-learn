@@ -148,6 +148,8 @@ def _segment_view_features(segments: pd.DataFrame, ingested_at) -> list[dict]:
 
     rows = []
     segments["period_end"] = pd.to_datetime(segments["period_end"])
+    if "period_type" in segments.columns and (segments["period_type"] == "quarter").any():
+        segments = segments[segments["period_type"] == "quarter"]
     latest = (
         segments.sort_values("period_end")
         .groupby(["ticker", "segment_name"], dropna=False)

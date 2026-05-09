@@ -167,6 +167,9 @@ SCHEMA_SQL = [
         raw_reaction_summary TEXT,
         benchmark_attribution_summary TEXT,
         metric_surprise_summary TEXT,
+        linked_segment_features TEXT,
+        linked_kpi_ids TEXT,
+        fundamental_context_summary TEXT,
         interpretation TEXT,
         thesis_impact TEXT,
         confidence DOUBLE,
@@ -381,6 +384,9 @@ MIGRATION_SQL = [
     "ALTER TABLE event_returns ADD COLUMN IF NOT EXISTS missing_reason TEXT",
     "ALTER TABLE event_returns ADD COLUMN IF NOT EXISTS analysis_status TEXT",
     "ALTER TABLE event_reviews ADD COLUMN IF NOT EXISTS analysis_status TEXT",
+    "ALTER TABLE event_reviews ADD COLUMN IF NOT EXISTS linked_segment_features TEXT",
+    "ALTER TABLE event_reviews ADD COLUMN IF NOT EXISTS linked_kpi_ids TEXT",
+    "ALTER TABLE event_reviews ADD COLUMN IF NOT EXISTS fundamental_context_summary TEXT",
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS data_quality_score DOUBLE",
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS model_confidence DOUBLE",
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS confidence_cap_reason TEXT",
@@ -523,6 +529,7 @@ def _create_segment_views(conn: duckdb.DuckDBPyConnection) -> None:
                 period_end,
                 fiscal_year,
                 fiscal_quarter,
+                period_type,
                 ticker,
                 segment_name,
                 kpi_name,
@@ -539,6 +546,7 @@ def _create_segment_views(conn: duckdb.DuckDBPyConnection) -> None:
                 period_end,
                 fiscal_year,
                 fiscal_quarter,
+                period_type,
                 ticker,
                 segment_name,
                 MAX(CASE WHEN kpi_name = 'revenue' THEN kpi_value END) AS segment_revenue,
@@ -547,14 +555,16 @@ def _create_segment_views(conn: duckdb.DuckDBPyConnection) -> None:
                 MAX(CASE WHEN kpi_name = 'margin' THEN kpi_value END) AS reported_margin,
                 MAX(source_url) AS source_url,
                 MAX(source_accession_number) AS source_accession_number,
-                MAX(confidence) AS confidence
+                MAX(confidence) AS confidence,
+                STRING_AGG(segment_kpi_id, ',') AS source_kpi_ids
             FROM segment_rows
-            GROUP BY period_end, fiscal_year, fiscal_quarter, ticker, segment_name
+            GROUP BY period_end, fiscal_year, fiscal_quarter, period_type, ticker, segment_name
         )
         SELECT
             period_end,
             fiscal_year,
             fiscal_quarter,
+            period_type,
             ticker,
             segment_name,
             segment_revenue,
@@ -572,7 +582,8 @@ def _create_segment_views(conn: duckdb.DuckDBPyConnection) -> None:
                 - 1 AS segment_revenue_growth_yoy,
             source_url,
             source_accession_number,
-            confidence
+            confidence,
+            source_kpi_ids
         FROM pivoted
         """
     )
