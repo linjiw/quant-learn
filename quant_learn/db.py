@@ -122,6 +122,9 @@ SCHEMA_SQL = [
         unit TEXT,
         source TEXT,
         confidence DOUBLE,
+        metric_category TEXT,
+        metric_polarity TEXT,
+        surprise_direction TEXT,
         ingested_at TIMESTAMP NOT NULL,
         PRIMARY KEY (event_id, metric_name)
     )
@@ -140,6 +143,8 @@ SCHEMA_SQL = [
         benchmark_return DOUBLE,
         abnormal_return DOUBLE,
         model_name TEXT NOT NULL,
+        data_quality_flag TEXT,
+        missing_reason TEXT,
         ingested_at TIMESTAMP NOT NULL,
         PRIMARY KEY (
             event_id,
@@ -149,6 +154,25 @@ SCHEMA_SQL = [
             benchmark_ticker,
             model_name
         )
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS event_reviews (
+        event_id TEXT NOT NULL,
+        affected_ticker TEXT NOT NULL,
+        reaction_date DATE NOT NULL,
+        event_type TEXT NOT NULL,
+        summary TEXT,
+        raw_reaction_summary TEXT,
+        benchmark_attribution_summary TEXT,
+        metric_surprise_summary TEXT,
+        interpretation TEXT,
+        thesis_impact TEXT,
+        confidence DOUBLE,
+        data_quality_flag TEXT,
+        created_at TIMESTAMP NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (event_id, affected_ticker)
     )
     """,
     """
@@ -322,6 +346,11 @@ MIGRATION_SQL = [
     "ALTER TABLE events ADD COLUMN IF NOT EXISTS after_market BOOLEAN",
     "ALTER TABLE events ADD COLUMN IF NOT EXISTS thesis_tag TEXT",
     "ALTER TABLE events ADD COLUMN IF NOT EXISTS created_at TIMESTAMP",
+    "ALTER TABLE event_metrics ADD COLUMN IF NOT EXISTS metric_category TEXT",
+    "ALTER TABLE event_metrics ADD COLUMN IF NOT EXISTS metric_polarity TEXT",
+    "ALTER TABLE event_metrics ADD COLUMN IF NOT EXISTS surprise_direction TEXT",
+    "ALTER TABLE event_returns ADD COLUMN IF NOT EXISTS data_quality_flag TEXT",
+    "ALTER TABLE event_returns ADD COLUMN IF NOT EXISTS missing_reason TEXT",
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS data_quality_score DOUBLE",
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS model_confidence DOUBLE",
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS confidence_cap_reason TEXT",
@@ -384,6 +413,8 @@ def _ensure_event_returns_long_schema(conn: duckdb.DuckDBPyConnection) -> None:
             benchmark_return DOUBLE,
             abnormal_return DOUBLE,
             model_name TEXT NOT NULL,
+            data_quality_flag TEXT,
+            missing_reason TEXT,
             ingested_at TIMESTAMP NOT NULL,
             PRIMARY KEY (
                 event_id,

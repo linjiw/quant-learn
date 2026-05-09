@@ -3,9 +3,15 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
-from quant_learn.analytics import event_study
-from quant_learn.analytics.event_study import _event_window_return
+from quant_learn.analytics import event_reviews, event_study
+from quant_learn.analytics.event_study import (
+    EVENT_RETURN_WINDOWS,
+    _event_window_return,
+    event_return_invariants_pass,
+    validate_event_return_invariants,
+)
 from quant_learn.db import initialize_database
+from quant_learn.taxonomy import EVENT_TYPES, EXPECTED_DIRECTIONS
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -23,6 +29,8 @@ def test_import_events_ai_compute_csv_has_required_event_loop_fields() -> None:
     assert set(events.loc[events["importance_score"] >= 0.8, "event_id"]).issubset(
         set(metrics["event_id"])
     )
+    assert set(events["event_type"]).issubset(EVENT_TYPES)
+    assert set(impacts["expected_direction"]).issubset(EXPECTED_DIRECTIONS)
 
 
 def test_event_window_return_uses_inclusive_close_to_close_window() -> None:
@@ -127,13 +135,33 @@ def test_build_event_returns_uses_reaction_date_and_long_benchmark_rows(
             """,
             [ingested_at],
         )
+        conn.execute(
+            """
+            INSERT INTO event_metrics (
+                event_id, metric_name, actual_value, expected_value, surprise_value,
+                surprise_pct, unit, source, confidence, metric_category,
+                metric_polarity, surprise_direction, ingested_at
+            )
+            VALUES (
+                'event_after_market', 'eps', 1.2, 1.0, 0.2, 0.2, 'usd_per_share',
+                'fixture', 0.9, 'earnings', 'higher_is_better', 'positive', ?
+            )
+            """,
+            [ingested_at],
+        )
 
     monkeypatch.setattr(event_study, "connect", lambda: duckdb.connect(str(db_path)))
     monkeypatch.setattr(event_study, "initialize_database", lambda: initialize_database(db_path))
+    monkeypatch.setattr(event_reviews, "connect", lambda: duckdb.connect(str(db_path)))
+    monkeypatch.setattr(
+        event_reviews,
+        "initialize_database",
+        lambda: initialize_database(db_path),
+    )
 
     result = event_study.build_event_returns(
         event_type="earnings",
-        benchmark_tickers=["QQQ"],
+        benchmark_tickers=["QQQ", "SOXX"],
     )
     row = result[
         (result["return_window"] == "0_p1") & (result["benchmark_ticker"] == "QQQ")
@@ -144,3 +172,25 @@ def test_build_event_returns_uses_reaction_date_and_long_benchmark_rows(
     assert row["raw_return"] == 121.0 / 105.0 - 1.0
     assert row["benchmark_return"] == 105.0 / 100.0 - 1.0
     assert row["abnormal_return"] == row["raw_return"] - row["benchmark_return"]
+    assert row["data_quality_flag"] == "complete"
+    assert len(result) == len(EVENT_RETURN_WINDOWS) * 2
+
+    invariants = validate_event_return_invariants(result)
+    assert invariants["expected_rows"] == len(EVENT_RETURN_WINDOWS) * 2
+    assert event_return_invariants_pass(result)
+
+    missing_benchmark = result[
+        (result["return_window"] == "0_p1") & (result["benchmark_ticker"] == "SOXX")
+    ].iloc[0]
+    assert missing_benchmark["data_quality_flag"] == "incomplete"
+    assert missing_benchmark["missing_reason"] == "missing_benchmark_price"
+
+    event_study.store_event_returns(result)
+    reviews = event_reviews.build_event_reviews()
+    review = reviews.iloc[0]
+
+    assert len(reviews) == 1
+    assert review["affected_ticker"] == "TEST"
+    assert "Raw return" in review["raw_reaction_summary"]
+    assert "Metric evidence" in review["metric_surprise_summary"]
+    assert review["data_quality_flag"] == "incomplete"

@@ -67,6 +67,9 @@ CSV Exports
 `event_returns`
 : Long-format event-level CAR windows and abnormal returns versus QQQ, SOXX, and SMH. Rows are keyed by event, affected ticker, return window, and benchmark. This is the core table for repeatable event review.
 
+`event_reviews`
+: Rule-based summaries built from `events`, `event_impacts`, `event_metrics`, and `event_returns`. Each row explains one event impact with raw reaction, benchmark attribution, metric surprise, thesis impact, confidence, and data-quality status.
+
 `segment_kpis`
 : Manually verified segment-level KPIs. This is manual-first because company segment disclosures are not reliably exposed through simple companyfacts calls.
 
@@ -114,6 +117,7 @@ uv run python -m scripts.build_price_features
 uv run python -m scripts.build_fundamentals
 uv run python -m scripts.build_factor_dashboard
 uv run python -m scripts.build_event_returns --benchmarks QQQ SOXX SMH
+uv run python -m scripts.build_event_reviews
 uv run python -m scripts.ingest_valuation
 uv run python -m scripts.build_forward_analysis
 uv run python -m scripts.run_event_study --event-type earnings --window-before 5 --window-after 20
@@ -123,5 +127,5 @@ uv run python -m scripts.run_event_study --event-type earnings --window-before 5
 
 1. Add hyperscaler capex events and product/export-control events to the curated event set.
 2. Add segment KPI extraction helpers one company at a time, starting with GOOGL and AMD because their segment tables are cleaner.
-3. Add evidence cards and scorecard evidence IDs after the first event-study outputs are manually reviewed.
+3. Add evidence cards and scorecard evidence IDs after the first event-review outputs are manually reviewed.
 4. Add an IV monitor table and adapter after choosing an options data source.

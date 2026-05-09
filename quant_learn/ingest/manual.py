@@ -134,6 +134,9 @@ def import_event_metrics(path: Path) -> int:
         "unit",
         "source",
         "confidence",
+        "metric_category",
+        "metric_polarity",
+        "surprise_direction",
     ):
         if optional not in df.columns:
             df[optional] = None
@@ -169,6 +172,28 @@ def import_event_metrics(path: Path) -> int:
         / df.loc[missing_surprise_pct, "expected_value"].abs()
     )
 
+    df["metric_category"] = df.apply(
+        lambda row: _coalesce_text(
+            row["metric_category"],
+            _infer_metric_category(row["metric_name"]),
+        ),
+        axis=1,
+    )
+    df["metric_polarity"] = df.apply(
+        lambda row: _coalesce_text(
+            row["metric_polarity"],
+            _infer_metric_polarity(row["metric_name"]),
+        ),
+        axis=1,
+    )
+    df["surprise_direction"] = df.apply(
+        lambda row: _coalesce_text(
+            row["surprise_direction"],
+            _infer_surprise_direction(row["surprise_value"], row["surprise_pct"]),
+        ),
+        axis=1,
+    )
+
     df["ingested_at"] = utc_now_naive()
     df = df[
         [
@@ -182,6 +207,9 @@ def import_event_metrics(path: Path) -> int:
             "unit",
             "source",
             "confidence",
+            "metric_category",
+            "metric_polarity",
+            "surprise_direction",
             "ingested_at",
         ]
     ]
@@ -242,3 +270,49 @@ def _parse_optional_bool(value: object) -> Optional[bool]:
     if normalized in {"false", "0", "no", "n"}:
         return False
     return None
+
+
+def _coalesce_text(value: object, default: str) -> str:
+    if pd.isna(value):
+        return default
+    text = str(value).strip()
+    return text or default
+
+
+def _infer_metric_category(metric_name: object) -> str:
+    metric = str(metric_name).strip().lower()
+    if "capex" in metric or "capital" in metric:
+        return "capital_intensity"
+    if "revenue" in metric:
+        return "demand"
+    if "margin" in metric:
+        return "profitability"
+    if "eps" in metric or "earnings" in metric:
+        return "earnings"
+    if "inventory" in metric:
+        return "supply_chain"
+    return "other"
+
+
+def _infer_metric_polarity(metric_name: object) -> str:
+    metric = str(metric_name).strip().lower()
+    if "capex" in metric or "capital" in metric:
+        return "context_dependent"
+    if any(token in metric for token in ("revenue", "margin", "eps", "earnings")):
+        return "higher_is_better"
+    if "inventory" in metric:
+        return "context_dependent"
+    return "context_dependent"
+
+
+def _infer_surprise_direction(surprise_value: object, surprise_pct: object) -> str:
+    value = surprise_pct
+    if pd.isna(value):
+        value = surprise_value
+    if pd.isna(value):
+        return "unknown"
+    if value > 0:
+        return "positive"
+    if value < 0:
+        return "negative"
+    return "neutral"

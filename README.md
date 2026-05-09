@@ -18,8 +18,9 @@ The first version is deliberately a research system, not an auto-trading system.
 5. Factor dashboard metrics: returns, volatility, drawdown, rolling beta, residual returns
 6. Event-study helpers for earnings, TSMC monthly revenue, and hyperscaler capex events
 7. Manual CSV import path for verified segment KPIs
-8. Event-level return windows in `event_returns`
-9. Standardized SEC-derived `fundamentals_quarterly` research snapshots
+8. Event-level return windows and data-quality flags in `event_returns`
+9. Rule-based event review summaries in `event_reviews`
+10. Standardized SEC-derived `fundamentals_quarterly` research snapshots
 
 For the design rationale and table definitions, see `docs/system_design.md`.
 For the current loophole audit, see `docs/strategy_loopholes.md`.
@@ -71,12 +72,15 @@ uv run python -m scripts.import_events data/manual/events_ai_compute.csv
 uv run python -m scripts.import_event_impacts data/manual/event_impacts_ai_compute.csv
 uv run python -m scripts.import_event_metrics data/manual/event_metrics_ai_compute.csv
 uv run python -m scripts.build_event_returns --benchmarks QQQ SOXX SMH
+uv run python -m scripts.build_event_reviews
 ```
 
 `events` records the event itself, `event_impacts` records which stocks the event can
 move, and `event_metrics` stores surprise/KPI evidence. `event_returns` is a
 long-format attribution table keyed by event, affected ticker, return window,
-and benchmark.
+and benchmark. `event_reviews` turns the event loop into readable review rows with
+raw reaction, benchmark attribution, metric surprise, thesis impact, confidence,
+and data-quality status.
 
 Manual segment KPIs:
 

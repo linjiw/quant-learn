@@ -46,6 +46,9 @@ flowchart LR
 `event_returns`
 : Long-format event attribution table. For each event and affected ticker, compare raw return against QQQ, SOXX, and SMH across windows such as `m1_p1`, `0_p1`, `0_p5`, and `0_p20`. If raw return is strong but abnormal return is weak, the move was mostly market or sector beta.
 
+`event_reviews`
+: Human-readable event recap generated from the event loop. Use it as the first draft of an event memo, then manually verify the interpretation and add missing fundamental context.
+
 ## Practical Interpretation Order
 
 1. Start with cumulative return to see the trend.
@@ -54,3 +57,4 @@ flowchart LR
 4. Check drawdown and correlation before thinking about position size.
 5. Use TSMC revenue and curated events to ask whether the AI compute cycle is accelerating or slowing.
 6. Read `event_returns` with `event_metrics` before writing an event memo, so the explanation ties price reaction to evidence rather than narrative alone.
+7. Use `event_reviews.data_quality_flag` to separate completed event windows from incomplete ones, especially for very recent events.

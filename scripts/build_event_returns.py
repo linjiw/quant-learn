@@ -1,6 +1,10 @@
 import argparse
 
-from quant_learn.analytics.event_study import build_event_returns, store_event_returns
+from quant_learn.analytics.event_study import (
+    build_event_returns,
+    store_event_returns,
+    validate_event_return_invariants,
+)
 from quant_learn.config import EXPORT_DIR, ensure_directories
 
 
@@ -26,9 +30,14 @@ def main() -> None:
         benchmark_tickers=args.benchmarks,
     )
     count = store_event_returns(event_returns)
+    invariants = validate_event_return_invariants(event_returns)
     export_path = EXPORT_DIR / args.export
     event_returns.to_csv(export_path, index=False)
     print(f"Upserted {count} event return rows.")
+    print(
+        "Invariant: "
+        f"{invariants['actual_rows']} actual rows / {invariants['expected_rows']} expected rows."
+    )
     print(f"Exported {export_path}.")
 
 

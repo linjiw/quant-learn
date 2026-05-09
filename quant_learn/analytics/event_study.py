@@ -7,6 +7,15 @@ import pandas as pd
 from quant_learn.db import connect, initialize_database, upsert_dataframe
 from quant_learn.time import utc_now_naive
 
+EVENT_RETURN_WINDOWS = {
+    "m1_p1": (-1, 1),
+    "0_p1": (0, 1),
+    "0_p5": (0, 5),
+    "0_p20": (0, 20),
+    "pre_20_m1": (-20, -1),
+    "post_1_p20": (1, 20),
+}
+
 
 def run_event_study(
     event_type: str,
@@ -150,35 +159,44 @@ def build_event_returns(
     price = prices.pivot(index="date", columns="ticker", values="price").sort_index()
     trading_dates = list(price.index)
     ingested_at = utc_now_naive()
-    window_specs = {
-        "m1_p1": (-1, 1),
-        "0_p1": (0, 1),
-        "0_p5": (0, 5),
-        "0_p20": (0, 20),
-        "pre_20_m1": (-20, -1),
-        "post_1_p20": (1, 20),
-    }
 
     rows = []
     for _, event in events.iterrows():
         ticker = event["affected_ticker"]
-        if ticker not in price.columns:
-            continue
         anchor_index = _nearest_trading_index(trading_dates, event["reaction_date"])
-        if anchor_index is None:
-            continue
+        anchor_flag, anchor_reason = _reaction_date_quality(
+            trading_dates,
+            anchor_index,
+            event["reaction_date"],
+        )
 
-        for window_name, (start_day, end_day) in window_specs.items():
-            raw_return = _event_window_return(price, ticker, anchor_index, start_day, end_day)
+        for window_name, (start_day, end_day) in EVENT_RETURN_WINDOWS.items():
+            raw_return, raw_flag, raw_reason = _event_window_return_with_quality(
+                price,
+                ticker,
+                anchor_index,
+                start_day,
+                end_day,
+                missing_reason="missing_ticker_price",
+            )
             for benchmark_ticker in benchmarks:
-                if benchmark_ticker not in price.columns:
-                    continue
-                benchmark_return = _event_window_return(
-                    price,
-                    benchmark_ticker,
-                    anchor_index,
-                    start_day,
-                    end_day,
+                benchmark_return, benchmark_flag, benchmark_reason = (
+                    _event_window_return_with_quality(
+                        price,
+                        benchmark_ticker,
+                        anchor_index,
+                        start_day,
+                        end_day,
+                        missing_reason="missing_benchmark_price",
+                    )
+                )
+                quality_flag, missing_reason = _combine_quality(
+                    anchor_flag,
+                    anchor_reason,
+                    raw_flag,
+                    raw_reason,
+                    benchmark_flag,
+                    benchmark_reason,
                 )
                 rows.append(
                     {
@@ -194,11 +212,100 @@ def build_event_returns(
                         "benchmark_return": benchmark_return,
                         "abnormal_return": _difference(raw_return, benchmark_return),
                         "model_name": "raw_vs_benchmark",
+                        "data_quality_flag": quality_flag,
+                        "missing_reason": missing_reason,
                         "ingested_at": ingested_at,
                     }
                 )
 
     return pd.DataFrame(rows)
+
+
+def validate_event_return_invariants(event_returns: pd.DataFrame) -> dict[str, int]:
+    """Return event-return count invariants for caller-side health checks."""
+
+    if event_returns.empty:
+        return {
+            "impact_count": 0,
+            "window_count": len(EVENT_RETURN_WINDOWS),
+            "benchmark_count": 0,
+            "expected_rows": 0,
+            "actual_rows": 0,
+        }
+
+    impact_count = event_returns[["event_id", "affected_ticker"]].drop_duplicates().shape[0]
+    window_count = event_returns["return_window"].nunique()
+    benchmark_count = event_returns["benchmark_ticker"].nunique()
+    expected_rows = impact_count * window_count * benchmark_count
+    return {
+        "impact_count": int(impact_count),
+        "window_count": int(window_count),
+        "benchmark_count": int(benchmark_count),
+        "expected_rows": int(expected_rows),
+        "actual_rows": int(len(event_returns)),
+    }
+
+
+def event_return_invariants_pass(event_returns: pd.DataFrame) -> bool:
+    """Check the core long-format row-count invariant."""
+
+    invariants = validate_event_return_invariants(event_returns)
+    return invariants["expected_rows"] == invariants["actual_rows"]
+
+
+def _reaction_date_quality(
+    trading_dates: list[pd.Timestamp],
+    anchor_index: Optional[int],
+    reaction_date: pd.Timestamp,
+) -> tuple[str, Optional[str]]:
+    if anchor_index is None:
+        return "incomplete", "non_trading_reaction_date"
+    if trading_dates[anchor_index].date() != reaction_date.date():
+        return "mapped_reaction_date", "reaction_date_mapped_to_next_trading_day"
+    return "complete", None
+
+
+def _event_window_return_with_quality(
+    price: pd.DataFrame,
+    ticker: str,
+    anchor_index: Optional[int],
+    start_offset: int,
+    end_offset: int,
+    missing_reason: str,
+) -> tuple[Optional[float], str, Optional[str]]:
+    if anchor_index is None:
+        return None, "incomplete", "non_trading_reaction_date"
+    if ticker not in price.columns:
+        return None, "incomplete", missing_reason
+
+    start_index = anchor_index + start_offset - 1
+    end_index = anchor_index + end_offset
+    if start_index < 0 or end_index >= len(price.index):
+        return None, "incomplete", "insufficient_window"
+
+    start_price = price.iloc[start_index][ticker]
+    end_price = price.iloc[end_index][ticker]
+    if pd.isna(start_price) or pd.isna(end_price) or start_price == 0:
+        return None, "incomplete", missing_reason
+
+    return float(end_price / start_price - 1.0), "complete", None
+
+
+def _combine_quality(
+    anchor_flag: str,
+    anchor_reason: Optional[str],
+    raw_flag: str,
+    raw_reason: Optional[str],
+    benchmark_flag: str,
+    benchmark_reason: Optional[str],
+) -> tuple[str, Optional[str]]:
+    if raw_flag == "incomplete":
+        return "incomplete", raw_reason
+    if benchmark_flag == "incomplete":
+        return "incomplete", benchmark_reason
+    if anchor_flag == "mapped_reaction_date":
+        return anchor_flag, anchor_reason
+    return "complete", None
 
 
 def store_event_returns(event_returns: pd.DataFrame) -> int:
@@ -216,8 +323,6 @@ def store_event_returns(event_returns: pd.DataFrame) -> int:
                 "event_id",
                 "affected_ticker",
                 "return_window",
-                "benchmark_type",
-                "benchmark_ticker",
                 "model_name",
             ],
         )

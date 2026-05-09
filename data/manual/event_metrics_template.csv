@@ -1,1 +1,1 @@
-event_id,metric_name,actual_value,expected_value,prior_value,surprise_value,surprise_pct,unit,source,confidence
+event_id,metric_name,actual_value,expected_value,prior_value,surprise_value,surprise_pct,unit,source,confidence,metric_category,metric_polarity,surprise_direction
