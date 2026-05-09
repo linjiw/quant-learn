@@ -1,1 +1,1 @@
-event_id,event_date,ticker,event_type,event_description,source_url,expected_value,actual_value,surprise_pct,metadata_json
+event_id,event_date,ticker,event_type,event_name,event_description,source,source_url,importance_score,expected_value,actual_value,surprise_pct,metadata_json

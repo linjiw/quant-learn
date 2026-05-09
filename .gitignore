@@ -4,7 +4,10 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+.ipynb_checkpoints/
 data/duckdb/*.duckdb
 data/duckdb/*.duckdb.wal
+data/processed/*.duckdb
+data/processed/*.duckdb.wal
 data/exports/
 .env

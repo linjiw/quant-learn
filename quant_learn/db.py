@@ -17,6 +17,10 @@ SCHEMA_SQL = [
         close DOUBLE,
         adj_close DOUBLE,
         volume BIGINT,
+        return_1d DOUBLE,
+        return_5d DOUBLE,
+        return_20d DOUBLE,
+        return_60d DOUBLE,
         source TEXT NOT NULL,
         ingested_at TIMESTAMP NOT NULL,
         PRIMARY KEY (date, ticker)
@@ -76,14 +80,81 @@ SCHEMA_SQL = [
         event_date DATE NOT NULL,
         ticker TEXT NOT NULL,
         event_type TEXT NOT NULL,
+        event_name TEXT,
         event_description TEXT,
+        source TEXT,
         source_url TEXT,
+        importance_score DOUBLE,
         expected_value DOUBLE,
         actual_value DOUBLE,
         surprise_pct DOUBLE,
         metadata_json TEXT,
         ingested_at TIMESTAMP NOT NULL,
         PRIMARY KEY (event_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS event_returns (
+        event_id TEXT NOT NULL,
+        event_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        benchmark TEXT NOT NULL,
+        sector_benchmark TEXT,
+        return_m1_p1 DOUBLE,
+        return_0_p1 DOUBLE,
+        return_0_p5 DOUBLE,
+        return_0_p20 DOUBLE,
+        benchmark_return_0_p5 DOUBLE,
+        sector_return_0_p5 DOUBLE,
+        abnormal_return_0_p5 DOUBLE,
+        sector_abnormal_return_0_p5 DOUBLE,
+        pre_event_runup_20d DOUBLE,
+        post_event_drift_20d DOUBLE,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (event_id, benchmark, sector_benchmark)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS fundamentals_quarterly (
+        ticker TEXT NOT NULL,
+        fiscal_year INTEGER NOT NULL,
+        fiscal_quarter TEXT NOT NULL,
+        period_end DATE NOT NULL,
+        revenue DOUBLE,
+        gross_profit DOUBLE,
+        gross_margin DOUBLE,
+        operating_income DOUBLE,
+        operating_margin DOUBLE,
+        net_income DOUBLE,
+        eps DOUBLE,
+        operating_cash_flow DOUBLE,
+        capex DOUBLE,
+        free_cash_flow DOUBLE,
+        cash DOUBLE,
+        debt DOUBLE,
+        shares_outstanding DOUBLE,
+        buyback DOUBLE,
+        dividend DOUBLE,
+        source_accession_number TEXT,
+        source_filed_date DATE,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (ticker, fiscal_year, fiscal_quarter, period_end)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS signals (
+        date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        relative_strength_score DOUBLE,
+        fundamental_momentum_score DOUBLE,
+        valuation_score DOUBLE,
+        event_score DOUBLE,
+        cash_flow_score DOUBLE,
+        risk_score DOUBLE,
+        final_score DOUBLE,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (date, ticker)
     )
     """,
     """
@@ -123,6 +194,16 @@ SCHEMA_SQL = [
     """,
 ]
 
+MIGRATION_SQL = [
+    "ALTER TABLE prices ADD COLUMN IF NOT EXISTS return_1d DOUBLE",
+    "ALTER TABLE prices ADD COLUMN IF NOT EXISTS return_5d DOUBLE",
+    "ALTER TABLE prices ADD COLUMN IF NOT EXISTS return_20d DOUBLE",
+    "ALTER TABLE prices ADD COLUMN IF NOT EXISTS return_60d DOUBLE",
+    "ALTER TABLE events ADD COLUMN IF NOT EXISTS event_name TEXT",
+    "ALTER TABLE events ADD COLUMN IF NOT EXISTS source TEXT",
+    "ALTER TABLE events ADD COLUMN IF NOT EXISTS importance_score DOUBLE",
+]
+
 
 def connect(db_path: Path = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection:
     """Connect to the project DuckDB database."""
@@ -136,6 +217,8 @@ def initialize_database(db_path: Path = DEFAULT_DB_PATH) -> None:
 
     with connect(db_path) as conn:
         for statement in SCHEMA_SQL:
+            conn.execute(statement)
+        for statement in MIGRATION_SQL:
             conn.execute(statement)
 
 
@@ -162,7 +245,14 @@ def upsert_dataframe(
         f"WHERE EXISTS (SELECT 1 FROM {incoming_name} WHERE {key_match})"
     )
     conn.execute(delete_sql)
-    conn.execute(f"INSERT INTO {table} SELECT * FROM {incoming_name}")
+    columns = list(df.columns)
+    column_sql = ", ".join(columns)
+    incoming_column_sql = ", ".join([f"{incoming_name}.{column}" for column in columns])
+    insert_sql = (
+        f"INSERT INTO {table} ({column_sql}) "
+        f"SELECT {incoming_column_sql} FROM {incoming_name}"
+    )
+    conn.execute(insert_sql)
     conn.unregister(incoming_name)
     return len(df)
 

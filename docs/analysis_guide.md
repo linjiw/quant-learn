@@ -22,6 +22,12 @@ flowchart LR
 `latest_relative_strength.png`
 : Latest 60-day return and return versus QQQ. This is the first check for stock-specific strength.
 
+`ytd_returns_vs_benchmarks.png`
+: Current-year return versus QQQ, SOXX, and SMH. This is useful for weekly review.
+
+`relative_price_ratios.png`
+: Relative-price lens for NVDA/AMD, NVDA/TSM, AMD/TSM, GOOGL/QQQ, NVDA/SOXX, and TSM/SMH.
+
 `risk_return_scatter.png`
 : Latest 60-day return versus realized volatility. This checks whether recent return came with extreme risk.
 

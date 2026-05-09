@@ -7,6 +7,7 @@ from typing import Optional
 import pandas as pd
 import yfinance as yf
 
+from quant_learn.analytics.price_features import update_price_return_columns
 from quant_learn.config import DEFAULT_PRICE_TICKERS
 from quant_learn.db import connect, initialize_database, upsert_dataframe
 from quant_learn.time import utc_now_naive
@@ -101,7 +102,9 @@ def ingest_prices(
     prices = normalize_prices(downloaded, ticker_list)
     initialize_database()
     with connect() as conn:
-        return upsert_dataframe(conn, prices, "prices", ["date", "ticker"])
+        count = upsert_dataframe(conn, prices, "prices", ["date", "ticker"])
+    update_price_return_columns()
+    return count
 
 
 def latest_price_date() -> Optional[date]:

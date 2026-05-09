@@ -41,7 +41,7 @@ CSV Exports
 ## Tables
 
 `prices`
-: Daily OHLCV and adjusted close for the core universe and benchmarks.
+: Daily OHLCV, adjusted close, and 1/5/20/60-day returns for the core universe and benchmarks.
 
 `sec_filings`
 : Filing metadata from SEC submissions API.
@@ -49,11 +49,17 @@ CSV Exports
 `sec_facts`
 : Selected XBRL facts from SEC companyfacts API. This table is intentionally sparse and does not enforce a primary key because SEC facts can omit fiscal fields.
 
+`fundamentals_quarterly`
+: A standardized research snapshot built from selected SEC facts. It is useful for trend review, but cash-flow fields can be cumulative depending on the issuer's filing format, so reviewed segment work should still use verified source tables.
+
 `tsmc_monthly_revenue`
 : TSMC monthly revenue in NT$ millions and YoY change from the official investor relations page.
 
 `events`
 : Manually curated event log for earnings, hyperscaler capex, product launches, export controls, and TSMC monthly revenue announcement dates.
+
+`event_returns`
+: Event-level CAR windows and abnormal returns versus QQQ and a sector benchmark. This is the core table for repeatable event review.
 
 `segment_kpis`
 : Manually verified segment-level KPIs. This is manual-first because company segment disclosures are not reliably exposed through simple companyfacts calls.
@@ -87,7 +93,10 @@ uv run python -m scripts.ingest_sec --tickers GOOGL NVDA AMD TSM
 uv run python -m scripts.ingest_tsmc_revenue --years 2018 2019 2020 2021 2022 2023 2024 2025 2026
 uv run python -m scripts.import_events data/manual/events_template.csv
 uv run python -m scripts.import_segments data/manual/segment_kpis_template.csv
+uv run python -m scripts.build_price_features
+uv run python -m scripts.build_fundamentals
 uv run python -m scripts.build_factor_dashboard
+uv run python -m scripts.build_event_returns
 uv run python -m scripts.run_event_study --event-type earnings --window-before 5 --window-after 20
 ```
 

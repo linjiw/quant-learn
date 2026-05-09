@@ -12,7 +12,7 @@ from quant_learn.config import EXPORT_DIR, ensure_directories
 from quant_learn.db import connect, initialize_database
 
 REPORT_TICKERS = ["AMD", "TSM", "NVDA", "GOOGL"]
-BENCHMARKS = ["QQQ", "SOXX"]
+BENCHMARKS = ["QQQ", "SOXX", "SMH"]
 LINE_COLORS = {
     "AMD": "#2f6fbb",
     "TSM": "#228b68",
@@ -20,6 +20,7 @@ LINE_COLORS = {
     "GOOGL": "#d28b26",
     "QQQ": "#666666",
     "SOXX": "#9a5fb4",
+    "SMH": "#7f7f7f",
 }
 
 
@@ -44,7 +45,9 @@ def build_visual_report(
     chart_paths = {
         "workflow": figures_dir / "workflow_quant_analysis.png",
         "cumulative": figures_dir / "cumulative_returns.png",
+        "ytd": figures_dir / "ytd_returns_vs_benchmarks.png",
         "relative": figures_dir / "latest_relative_strength.png",
+        "relative_ratios": figures_dir / "relative_price_ratios.png",
         "risk_return": figures_dir / "risk_return_scatter.png",
         "beta": figures_dir / "rolling_beta_qqq.png",
         "correlation": figures_dir / "correlation_heatmap.png",
@@ -54,7 +57,9 @@ def build_visual_report(
 
     _plot_workflow(chart_paths["workflow"])
     _plot_cumulative_returns(price, chart_paths["cumulative"])
+    _plot_ytd_returns(price, chart_paths["ytd"])
     _plot_latest_relative_strength(metrics, chart_paths["relative"])
+    _plot_relative_price_ratios(price, chart_paths["relative_ratios"])
     _plot_risk_return(metrics, chart_paths["risk_return"])
     _plot_rolling_beta(factor, chart_paths["beta"])
     _plot_correlation(returns[REPORT_TICKERS], chart_paths["correlation"])
@@ -84,7 +89,7 @@ def _load_data() -> dict[str, pd.DataFrame]:
             SELECT date, ticker, adj_close, close, volume
             FROM prices
             WHERE ticker IN (
-                'AMD', 'TSM', 'NVDA', 'GOOGL', 'QQQ', 'SOXX'
+                'AMD', 'TSM', 'NVDA', 'GOOGL', 'QQQ', 'SOXX', 'SMH'
             )
             ORDER BY date, ticker
             """
@@ -252,6 +257,52 @@ def _plot_latest_relative_strength(metrics: pd.DataFrame, path: Path) -> None:
     ax.yaxis.set_major_formatter(lambda value, _: f"{value:.0%}")
     ax.legend()
     ax.grid(True, axis="y", alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(path, dpi=180)
+    plt.close(fig)
+
+
+def _plot_ytd_returns(price: pd.DataFrame, path: Path) -> None:
+    latest_date = price.dropna(how="all").index.max()
+    ytd_start = price[price.index.year == latest_date.year].index.min()
+    ytd = price.loc[ytd_start:latest_date, REPORT_TICKERS + BENCHMARKS]
+    returns = ytd.iloc[-1] / ytd.iloc[0] - 1.0
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    colors = [LINE_COLORS.get(ticker, "#666666") for ticker in returns.index]
+    ax.bar(returns.index, returns.values, color=colors)
+    ax.axhline(0, color="#333333", linewidth=0.8)
+    ax.set_title(f"Year-to-Date Return vs Benchmarks ({latest_date.year})")
+    ax.set_ylabel("YTD return")
+    ax.yaxis.set_major_formatter(lambda value, _: f"{value:.0%}")
+    ax.grid(True, axis="y", alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(path, dpi=180)
+    plt.close(fig)
+
+
+def _plot_relative_price_ratios(price: pd.DataFrame, path: Path) -> None:
+    ratio_specs = {
+        "NVDA / AMD": ("NVDA", "AMD"),
+        "NVDA / TSM": ("NVDA", "TSM"),
+        "AMD / TSM": ("AMD", "TSM"),
+        "GOOGL / QQQ": ("GOOGL", "QQQ"),
+        "NVDA / SOXX": ("NVDA", "SOXX"),
+        "TSM / SMH": ("TSM", "SMH"),
+    }
+    fig, ax = plt.subplots(figsize=(12, 6))
+    for label, (left, right) in ratio_specs.items():
+        if left not in price.columns or right not in price.columns:
+            continue
+        ratio = (price[left] / price[right]).dropna()
+        normalized = ratio / ratio.iloc[0]
+        ax.plot(normalized.index, normalized, label=label, linewidth=2)
+    ax.axhline(1.0, color="#333333", linestyle="--", linewidth=1)
+    ax.set_title("Relative Price Ratios, Normalized")
+    ax.set_ylabel("Ratio growth")
+    ax.legend(ncol=3)
+    ax.grid(True, alpha=0.25)
+    _format_date_axis(ax)
     fig.tight_layout()
     fig.savefig(path, dpi=180)
     plt.close(fig)
@@ -445,6 +496,21 @@ or company-specific strength.
 Meaning: 60-day relative strength versus QQQ is a first-pass alpha proxy.
 Positive values mean the stock has recently outperformed broad Nasdaq exposure;
 negative values mean it lagged.
+
+## YTD Return
+
+![YTD returns]({relative_paths["ytd"]})
+
+Meaning: YTD return is the current-year scoreboard. It is useful for weekly
+review, but it should always be checked against beta and volatility.
+
+## Relative Price Ratios
+
+![Relative ratios]({relative_paths["relative_ratios"]})
+
+Meaning: relative ratios show which link in the AI compute chain is being
+repriced. Rising NVDA/AMD favors NVIDIA leadership; rising AMD/TSM favors AMD
+catch-up; rising TSM/SMH means TSM is beating the broader semiconductor basket.
 
 ## Risk vs Return
 

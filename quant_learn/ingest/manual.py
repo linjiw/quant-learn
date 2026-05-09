@@ -18,8 +18,11 @@ def import_events(path: Path) -> int:
         raise ValueError(f"Missing required event columns: {sorted(missing)}")
 
     for optional in (
+        "event_name",
         "event_description",
+        "source",
         "source_url",
+        "importance_score",
         "expected_value",
         "actual_value",
         "surprise_pct",
@@ -36,8 +39,11 @@ def import_events(path: Path) -> int:
             "event_date",
             "ticker",
             "event_type",
+            "event_name",
             "event_description",
+            "source",
             "source_url",
+            "importance_score",
             "expected_value",
             "actual_value",
             "surprise_pct",
