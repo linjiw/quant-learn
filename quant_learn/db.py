@@ -78,41 +78,77 @@ SCHEMA_SQL = [
     CREATE TABLE IF NOT EXISTS events (
         event_id TEXT NOT NULL,
         event_date DATE NOT NULL,
+        reaction_date DATE,
         ticker TEXT NOT NULL,
+        primary_ticker TEXT,
         event_type TEXT NOT NULL,
         event_name TEXT,
         event_description TEXT,
         source TEXT,
         source_url TEXT,
+        after_market BOOLEAN,
         importance_score DOUBLE,
+        thesis_tag TEXT,
         expected_value DOUBLE,
         actual_value DOUBLE,
         surprise_pct DOUBLE,
         metadata_json TEXT,
+        created_at TIMESTAMP,
         ingested_at TIMESTAMP NOT NULL,
         PRIMARY KEY (event_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS event_impacts (
+        event_id TEXT NOT NULL,
+        affected_ticker TEXT NOT NULL,
+        expected_direction TEXT,
+        driver_tag TEXT,
+        thesis_tag TEXT,
+        impact_confidence DOUBLE,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (event_id, affected_ticker)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS event_metrics (
+        event_id TEXT NOT NULL,
+        metric_name TEXT NOT NULL,
+        actual_value DOUBLE,
+        expected_value DOUBLE,
+        prior_value DOUBLE,
+        surprise_value DOUBLE,
+        surprise_pct DOUBLE,
+        unit TEXT,
+        source TEXT,
+        confidence DOUBLE,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (event_id, metric_name)
     )
     """,
     """
     CREATE TABLE IF NOT EXISTS event_returns (
         event_id TEXT NOT NULL,
         event_date DATE NOT NULL,
-        ticker TEXT NOT NULL,
+        reaction_date DATE NOT NULL,
+        affected_ticker TEXT NOT NULL,
         event_type TEXT NOT NULL,
-        benchmark TEXT NOT NULL,
-        sector_benchmark TEXT,
-        return_m1_p1 DOUBLE,
-        return_0_p1 DOUBLE,
-        return_0_p5 DOUBLE,
-        return_0_p20 DOUBLE,
-        benchmark_return_0_p5 DOUBLE,
-        sector_return_0_p5 DOUBLE,
-        abnormal_return_0_p5 DOUBLE,
-        sector_abnormal_return_0_p5 DOUBLE,
-        pre_event_runup_20d DOUBLE,
-        post_event_drift_20d DOUBLE,
+        return_window TEXT NOT NULL,
+        raw_return DOUBLE,
+        benchmark_type TEXT NOT NULL,
+        benchmark_ticker TEXT NOT NULL,
+        benchmark_return DOUBLE,
+        abnormal_return DOUBLE,
+        model_name TEXT NOT NULL,
         ingested_at TIMESTAMP NOT NULL,
-        PRIMARY KEY (event_id, benchmark, sector_benchmark)
+        PRIMARY KEY (
+            event_id,
+            affected_ticker,
+            return_window,
+            benchmark_type,
+            benchmark_ticker,
+            model_name
+        )
     )
     """,
     """
@@ -281,6 +317,11 @@ MIGRATION_SQL = [
     "ALTER TABLE events ADD COLUMN IF NOT EXISTS event_name TEXT",
     "ALTER TABLE events ADD COLUMN IF NOT EXISTS source TEXT",
     "ALTER TABLE events ADD COLUMN IF NOT EXISTS importance_score DOUBLE",
+    "ALTER TABLE events ADD COLUMN IF NOT EXISTS reaction_date DATE",
+    "ALTER TABLE events ADD COLUMN IF NOT EXISTS primary_ticker TEXT",
+    "ALTER TABLE events ADD COLUMN IF NOT EXISTS after_market BOOLEAN",
+    "ALTER TABLE events ADD COLUMN IF NOT EXISTS thesis_tag TEXT",
+    "ALTER TABLE events ADD COLUMN IF NOT EXISTS created_at TIMESTAMP",
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS data_quality_score DOUBLE",
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS model_confidence DOUBLE",
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS confidence_cap_reason TEXT",
@@ -302,6 +343,59 @@ def initialize_database(db_path: Path = DEFAULT_DB_PATH) -> None:
             conn.execute(statement)
         for statement in MIGRATION_SQL:
             conn.execute(statement)
+        _ensure_event_returns_long_schema(conn)
+
+
+def _ensure_event_returns_long_schema(conn: duckdb.DuckDBPyConnection) -> None:
+    """Ensure event_returns uses the V0.8 long attribution schema.
+
+    The earlier V0.7 table was a wide, single-ticker table. It is safe to migrate
+    automatically only while the legacy table is empty; otherwise callers should
+    export legacy rows and migrate them intentionally.
+    """
+
+    columns = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info('event_returns')").fetchall()
+    }
+    if "affected_ticker" in columns and "return_window" in columns:
+        return
+
+    row_count = conn.execute("SELECT COUNT(*) FROM event_returns").fetchone()[0]
+    if row_count:
+        raise RuntimeError(
+            "event_returns still uses the legacy wide schema and contains rows. "
+            "Export or migrate those rows before initializing the V0.8 schema."
+        )
+
+    conn.execute("DROP TABLE event_returns")
+    conn.execute(
+        """
+        CREATE TABLE event_returns (
+            event_id TEXT NOT NULL,
+            event_date DATE NOT NULL,
+            reaction_date DATE NOT NULL,
+            affected_ticker TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            return_window TEXT NOT NULL,
+            raw_return DOUBLE,
+            benchmark_type TEXT NOT NULL,
+            benchmark_ticker TEXT NOT NULL,
+            benchmark_return DOUBLE,
+            abnormal_return DOUBLE,
+            model_name TEXT NOT NULL,
+            ingested_at TIMESTAMP NOT NULL,
+            PRIMARY KEY (
+                event_id,
+                affected_ticker,
+                return_window,
+                benchmark_type,
+                benchmark_ticker,
+                model_name
+            )
+        )
+        """
+    )
 
 
 def upsert_dataframe(

@@ -56,10 +56,16 @@ CSV Exports
 : TSMC monthly revenue in NT$ millions and YoY change from the official investor relations page.
 
 `events`
-: Manually curated event log for earnings, hyperscaler capex, product launches, export controls, and TSMC monthly revenue announcement dates.
+: Manually curated event log for earnings, hyperscaler capex, product launches, export controls, and TSMC monthly revenue announcement dates. It separates `event_date` from `reaction_date` so after-market releases use the next trading session.
+
+`event_impacts`
+: Cross-ticker impact map. One event can affect multiple stocks, such as a TSMC monthly revenue release affecting `TSM`, `NVDA`, and `AMD`.
+
+`event_metrics`
+: Surprise and KPI evidence for an event. First-pass data includes EPS surprise for earnings events and TSMC monthly revenue YoY changes.
 
 `event_returns`
-: Event-level CAR windows and abnormal returns versus QQQ and a sector benchmark. This is the core table for repeatable event review.
+: Long-format event-level CAR windows and abnormal returns versus QQQ, SOXX, and SMH. Rows are keyed by event, affected ticker, return window, and benchmark. This is the core table for repeatable event review.
 
 `segment_kpis`
 : Manually verified segment-level KPIs. This is manual-first because company segment disclosures are not reliably exposed through simple companyfacts calls.
@@ -100,12 +106,14 @@ uv run python -m scripts.init_db
 uv run python -m scripts.ingest_prices --start 2018-01-01
 uv run python -m scripts.ingest_sec --tickers GOOGL NVDA AMD TSM
 uv run python -m scripts.ingest_tsmc_revenue --years 2018 2019 2020 2021 2022 2023 2024 2025 2026
-uv run python -m scripts.import_events data/manual/events_template.csv
+uv run python -m scripts.import_events data/manual/events_ai_compute.csv
+uv run python -m scripts.import_event_impacts data/manual/event_impacts_ai_compute.csv
+uv run python -m scripts.import_event_metrics data/manual/event_metrics_ai_compute.csv
 uv run python -m scripts.import_segments data/manual/segment_kpis_template.csv
 uv run python -m scripts.build_price_features
 uv run python -m scripts.build_fundamentals
 uv run python -m scripts.build_factor_dashboard
-uv run python -m scripts.build_event_returns
+uv run python -m scripts.build_event_returns --benchmarks QQQ SOXX SMH
 uv run python -m scripts.ingest_valuation
 uv run python -m scripts.build_forward_analysis
 uv run python -m scripts.run_event_study --event-type earnings --window-before 5 --window-after 20
@@ -113,8 +121,7 @@ uv run python -m scripts.run_event_study --event-type earnings --window-before 5
 
 ## Next Implementation Steps
 
-1. Add a curated `events_ai_compute.csv` with real earnings dates, hyperscaler capex events, and TSMC announcement dates.
-2. Add a first event-study summary table: CAR[-1,+1], CAR[0,+5], CAR[0,+20].
-3. Add an IV monitor table and adapter after choosing an options data source.
-4. Add segment KPI extraction helpers one company at a time, starting with GOOGL and AMD because their segment tables are cleaner.
-5. Add the research score only after the first dashboard and event-study outputs are manually reviewed.
+1. Add hyperscaler capex events and product/export-control events to the curated event set.
+2. Add segment KPI extraction helpers one company at a time, starting with GOOGL and AMD because their segment tables are cleaner.
+3. Add evidence cards and scorecard evidence IDs after the first event-study outputs are manually reviewed.
+4. Add an IV monitor table and adapter after choosing an options data source.

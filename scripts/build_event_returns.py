@@ -9,6 +9,12 @@ def main() -> None:
     parser.add_argument("--event-type", default=None)
     parser.add_argument("--benchmark", default="QQQ")
     parser.add_argument("--sector-benchmark", default="SOXX")
+    parser.add_argument(
+        "--benchmarks",
+        nargs="*",
+        default=None,
+        help="Optional benchmark list. Defaults to QQQ SOXX SMH.",
+    )
     parser.add_argument("--export", default="event_returns.csv")
     args = parser.parse_args()
 
@@ -17,6 +23,7 @@ def main() -> None:
         event_type=args.event_type,
         benchmark=args.benchmark,
         sector_benchmark=args.sector_benchmark,
+        benchmark_tickers=args.benchmarks,
     )
     count = store_event_returns(event_returns)
     export_path = EXPORT_DIR / args.export

@@ -67,9 +67,16 @@ uv run python -m scripts.ingest_tsmc_revenue --years 2018 2019 2020 2021 2022 20
 Manual events:
 
 ```bash
-uv run python -m scripts.import_events data/manual/events_template.csv
-uv run python -m scripts.build_event_returns
+uv run python -m scripts.import_events data/manual/events_ai_compute.csv
+uv run python -m scripts.import_event_impacts data/manual/event_impacts_ai_compute.csv
+uv run python -m scripts.import_event_metrics data/manual/event_metrics_ai_compute.csv
+uv run python -m scripts.build_event_returns --benchmarks QQQ SOXX SMH
 ```
+
+`events` records the event itself, `event_impacts` records which stocks the event can
+move, and `event_metrics` stores surprise/KPI evidence. `event_returns` is a
+long-format attribution table keyed by event, affected ticker, return window,
+and benchmark.
 
 Manual segment KPIs:
 

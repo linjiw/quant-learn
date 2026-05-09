@@ -43,6 +43,9 @@ flowchart LR
 `tsmc_monthly_revenue.png`
 : Manufacturing-side demand read-through. Use actual announcement dates for event studies.
 
+`event_returns`
+: Long-format event attribution table. For each event and affected ticker, compare raw return against QQQ, SOXX, and SMH across windows such as `m1_p1`, `0_p1`, `0_p5`, and `0_p20`. If raw return is strong but abnormal return is weak, the move was mostly market or sector beta.
+
 ## Practical Interpretation Order
 
 1. Start with cumulative return to see the trend.
@@ -50,3 +53,4 @@ flowchart LR
 3. Check beta and realized volatility to separate alpha from risk.
 4. Check drawdown and correlation before thinking about position size.
 5. Use TSMC revenue and curated events to ask whether the AI compute cycle is accelerating or slowing.
+6. Read `event_returns` with `event_metrics` before writing an event memo, so the explanation ties price reaction to evidence rather than narrative alone.
