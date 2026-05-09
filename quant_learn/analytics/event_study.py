@@ -16,6 +16,10 @@ EVENT_RETURN_WINDOWS = {
     "post_1_p20": (1, 20),
 }
 
+FACTOR_MODEL_NAME = "three_factor_raw"
+FACTOR_MODEL_WINDOW = 60
+FACTOR_MODEL_BENCHMARK = "QQQ_SOXX_TNX"
+
 
 def run_event_study(
     event_type: str,
@@ -148,6 +152,23 @@ def build_event_returns(
             ORDER BY date, ticker
             """
         ).fetchdf()
+        factor_inputs = conn.execute(
+            """
+            SELECT date, qqq_return_1d, soxx_return_1d, delta_tnx_bps
+            FROM market_factor_inputs
+            ORDER BY date
+            """
+        ).fetchdf()
+        factor_exposures = conn.execute(
+            """
+            SELECT *
+            FROM factor_exposures
+            WHERE model_name = ?
+              AND lookback_window = ?
+            ORDER BY date, ticker
+            """,
+            [FACTOR_MODEL_NAME, FACTOR_MODEL_WINDOW],
+        ).fetchdf()
 
     if events.empty or prices.empty:
         return pd.DataFrame()
@@ -158,6 +179,8 @@ def build_event_returns(
     prices["price"] = prices["adj_close"].fillna(prices["close"])
     price = prices.pivot(index="date", columns="ticker", values="price").sort_index()
     trading_dates = list(price.index)
+    factor_frame = _factor_input_frame(factor_inputs)
+    exposure_frame = _factor_exposure_frame(factor_exposures)
     ingested_at = utc_now_naive()
 
     rows = []
@@ -215,6 +238,47 @@ def build_event_returns(
                         "data_quality_flag": quality_flag,
                         "missing_reason": missing_reason,
                         "analysis_status": _analysis_status(missing_reason, quality_flag),
+                        "ingested_at": ingested_at,
+                    }
+                )
+            if not factor_frame.empty and not exposure_frame.empty:
+                factor_return, factor_flag, factor_reason = _event_factor_return_with_quality(
+                    factor_frame,
+                    exposure_frame,
+                    trading_dates,
+                    ticker,
+                    anchor_index,
+                    start_day,
+                    end_day,
+                )
+                factor_quality_flag, factor_missing_reason = _combine_quality(
+                    anchor_flag,
+                    anchor_reason,
+                    raw_flag,
+                    raw_reason,
+                    factor_flag,
+                    factor_reason,
+                )
+                rows.append(
+                    {
+                        "event_id": event["event_id"],
+                        "event_date": event["event_date"].date(),
+                        "reaction_date": event["reaction_date"].date(),
+                        "affected_ticker": ticker,
+                        "event_type": event["event_type"],
+                        "return_window": window_name,
+                        "raw_return": raw_return,
+                        "benchmark_type": "factor_model",
+                        "benchmark_ticker": FACTOR_MODEL_BENCHMARK,
+                        "benchmark_return": factor_return,
+                        "abnormal_return": _difference(raw_return, factor_return),
+                        "model_name": FACTOR_MODEL_NAME,
+                        "data_quality_flag": factor_quality_flag,
+                        "missing_reason": factor_missing_reason,
+                        "analysis_status": _analysis_status(
+                            factor_missing_reason,
+                            factor_quality_flag,
+                        ),
                         "ingested_at": ingested_at,
                     }
                 )
@@ -324,6 +388,8 @@ def _analysis_status(missing_reason: Optional[str], data_quality_flag: str) -> s
     if missing_reason in {
         "missing_ticker_price",
         "missing_benchmark_price",
+        "missing_factor_input",
+        "insufficient_factor_history",
         "insufficient_trading_days",
         "non_trading_reaction_date",
         "adr_calendar_gap",
@@ -418,3 +484,65 @@ def _benchmark_type(ticker: str) -> str:
     if ticker in {"SOXX", "SMH"}:
         return "sector"
     return "benchmark"
+
+
+def _factor_input_frame(factor_inputs: pd.DataFrame) -> pd.DataFrame:
+    if factor_inputs.empty:
+        return pd.DataFrame()
+    frame = factor_inputs.copy()
+    frame["date"] = pd.to_datetime(frame["date"])
+    return frame.set_index("date").sort_index()
+
+
+def _factor_exposure_frame(factor_exposures: pd.DataFrame) -> pd.DataFrame:
+    if factor_exposures.empty:
+        return pd.DataFrame()
+    frame = factor_exposures.copy()
+    frame["date"] = pd.to_datetime(frame["date"])
+    return frame.set_index(["date", "ticker"]).sort_index()
+
+
+def _event_factor_return_with_quality(
+    factor_frame: pd.DataFrame,
+    exposure_frame: pd.DataFrame,
+    trading_dates: list[pd.Timestamp],
+    ticker: str,
+    anchor_index: Optional[int],
+    start_offset: int,
+    end_offset: int,
+) -> tuple[Optional[float], str, Optional[str]]:
+    if anchor_index is None:
+        return None, "incomplete", "non_trading_reaction_date"
+    exposure_index = anchor_index - 1
+    if exposure_index < 0:
+        return None, "incomplete", "insufficient_factor_history"
+
+    exposure_date = trading_dates[exposure_index]
+    if (exposure_date, ticker) not in exposure_frame.index:
+        return None, "incomplete", "insufficient_factor_history"
+    exposure = exposure_frame.loc[(exposure_date, ticker)]
+    if exposure["data_quality_flag"] == "insufficient_observations":
+        return None, "incomplete", "insufficient_factor_history"
+
+    start_index = anchor_index + start_offset
+    end_index = anchor_index + end_offset
+    if start_index < 0 or end_index >= len(trading_dates):
+        if end_index >= len(trading_dates):
+            return None, "incomplete", "pending_future_window"
+        return None, "incomplete", "insufficient_trading_days"
+
+    expected_daily = []
+    for trading_date in trading_dates[start_index : end_index + 1]:
+        if trading_date not in factor_frame.index:
+            return None, "incomplete", "missing_factor_input"
+        factors = factor_frame.loc[trading_date]
+        if factors[["qqq_return_1d", "soxx_return_1d", "delta_tnx_bps"]].isna().any():
+            return None, "incomplete", "missing_factor_input"
+        expected_daily.append(
+            float(exposure["alpha_daily"])
+            + float(exposure["beta_qqq"]) * float(factors["qqq_return_1d"])
+            + float(exposure["beta_soxx"]) * float(factors["soxx_return_1d"])
+            + float(exposure["beta_tnx_bps"]) * float(factors["delta_tnx_bps"])
+        )
+
+    return float(pd.Series(expected_daily).add(1.0).prod() - 1.0), "complete", None

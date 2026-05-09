@@ -21,6 +21,8 @@ MISSING_REASONS = {
     "pending_future_window",
     "missing_ticker_price",
     "missing_benchmark_price",
+    "missing_factor_input",
+    "insufficient_factor_history",
     "insufficient_trading_days",
     "non_trading_reaction_date",
     "adr_calendar_gap",

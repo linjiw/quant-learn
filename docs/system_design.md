@@ -50,7 +50,13 @@ CSV Exports
 : Selected XBRL facts from SEC companyfacts API. This table is intentionally sparse and does not enforce a primary key because SEC facts can omit fiscal fields.
 
 `fundamentals_quarterly`
-: A standardized research snapshot built from selected SEC facts. It is useful for trend review, but cash-flow fields can be cumulative depending on the issuer's filing format, so reviewed segment work should still use verified source tables.
+: Legacy-compatible standardized research snapshot built from the normalized fundamentals layer.
+
+`fundamentals_quarterly_normalized`
+: Point-in-time quarterly fundamentals with `available_date`, source accession, XBRL tag lineage, YTD cash-flow fields, derived quarterly cash-flow fields, and data-quality flags. CapEx is normalized as a positive outflow and FCF is calculated as OCF minus CapEx.
+
+`cash_flow_features`
+: Cash-flow evidence features such as CapEx / OCF and FCF margin, keyed to normalized fundamental IDs.
 
 `tsmc_monthly_revenue`
 : TSMC monthly revenue in NT$ millions and YoY change from the official investor relations page.
@@ -65,7 +71,7 @@ CSV Exports
 : Surprise and KPI evidence for an event. First-pass data includes EPS surprise for earnings events and TSMC monthly revenue YoY changes.
 
 `event_returns`
-: Long-format event-level CAR windows and abnormal returns versus QQQ, SOXX, and SMH. Rows are keyed by event, affected ticker, return window, and benchmark. It carries `data_quality_flag`, `missing_reason`, and `analysis_status`, so pending future windows are separated from true data issues.
+: Long-format event-level CAR windows and abnormal returns versus QQQ, SOXX, SMH, and the PIT factor model when available. Rows are keyed by event, affected ticker, return window, and benchmark/model. It carries `data_quality_flag`, `missing_reason`, and `analysis_status`, so pending future windows are separated from true data issues.
 
 `event_reviews`
 : Rule-based summaries built from `events`, `event_impacts`, `event_metrics`, and `event_returns`. Each row explains one event impact with raw reaction, benchmark attribution, metric surprise, thesis impact, confidence, and data-quality status.
@@ -81,6 +87,15 @@ CSV Exports
 
 `factor_dashboard`
 : Daily derived metrics: returns, relative returns, rolling beta, realized vol, drawdown, residual return, and volume z-score.
+
+`market_factor_inputs`
+: Daily QQQ, SOXX, SMH, SPY, and 10Y inputs. Yahoo `^TNX` changes are normalized to basis points with `^TNX.diff() * 10`.
+
+`factor_exposures`
+: Rolling `QQQ + SOXX + Δ10Y bps` exposures. Exposures dated `t` are estimated using observations through `t-1`, preventing look-ahead.
+
+`factor_residuals`
+: Daily expected return, contribution, and residual-return decomposition, including 5/20/60-day compounded residual returns.
 
 `valuation_snapshots`
 : Current valuation multiples from yfinance. Treat these as screening data and verify important values against primary filings or a paid data source.
@@ -125,6 +140,7 @@ uv run python -m scripts.build_segment_dashboard
 uv run python -m scripts.build_price_features
 uv run python -m scripts.build_fundamentals
 uv run python -m scripts.build_factor_dashboard
+uv run python -m scripts.build_factor_model
 uv run python -m scripts.build_event_returns --benchmarks QQQ SOXX SMH
 uv run python -m scripts.build_event_reviews
 uv run python -m scripts.ingest_valuation
@@ -134,7 +150,6 @@ uv run python -m scripts.run_event_study --event-type earnings --window-before 5
 
 ## Next Implementation Steps
 
-1. Fill curated GOOGL/NVDA/AMD segment KPI rows from primary earnings releases and filings.
-2. Add fundamental point-in-time cash-flow lineage for OCF, CapEx, and FCF.
-3. Add evidence cards and scorecard evidence IDs after segment features are reviewed.
-4. Add an IV monitor table and adapter after choosing an options data source.
+1. Add evidence cards and scorecard evidence IDs after segment, cash-flow, and factor features are reviewed.
+2. Add a single-process pipeline runner to avoid DuckDB writer lock conflicts.
+3. Add an IV monitor table and adapter after choosing an options data source.

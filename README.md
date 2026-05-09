@@ -25,6 +25,7 @@ The first version is deliberately a research system, not an auto-trading system.
 12. Event data-quality markdown report
 13. PIT-safe `fundamentals_quarterly_normalized` snapshots with cash-flow lineage
 14. `cash_flow_features` for CapEx / OCF and FCF margin evidence
+15. PIT three-factor residual model using `QQQ + SOXX + Δ10Y bps`
 
 For the design rationale and table definitions, see `docs/system_design.md`.
 For the current loophole audit, see `docs/strategy_loopholes.md`.
@@ -129,6 +130,19 @@ Generate a daily factor dashboard snapshot:
 ```bash
 uv run python -m scripts.build_factor_dashboard
 ```
+
+Generate PIT three-factor exposures, residuals, and factor-model event attribution inputs:
+
+```bash
+uv run python -m scripts.build_factor_model
+uv run python -m scripts.build_event_returns --benchmarks QQQ SOXX SMH
+uv run python -m scripts.build_event_reviews
+```
+
+`build_factor_model` uses `QQQ`, `SOXX`, and daily 10-year yield changes. With Yahoo
+`^TNX`, the system normalizes `^TNX.diff() * 10` into basis points. Rolling exposures
+use prior observations only: the exposure dated `t` is estimated from the window ending
+at `t-1`, then applied to date `t` returns.
 
 Generate the visual research report:
 

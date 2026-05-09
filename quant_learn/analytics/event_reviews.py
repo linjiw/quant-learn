@@ -114,8 +114,13 @@ def _benchmark_attribution_summary(event_returns: pd.DataFrame) -> str:
 
     parts = []
     for _, row in rows.sort_values("benchmark_ticker").iterrows():
+        benchmark_label = (
+            f"{row['benchmark_ticker']}:{row['model_name']}"
+            if row["benchmark_type"] == "factor_model"
+            else row["benchmark_ticker"]
+        )
         parts.append(
-            f"{row['benchmark_ticker']} abnormal {_fmt_pct(row['abnormal_return'])}"
+            f"{benchmark_label} abnormal {_fmt_pct(row['abnormal_return'])}"
             f" ({row['data_quality_flag']})"
         )
     return "0_p5 benchmark attribution: " + "; ".join(parts) + "."
@@ -195,7 +200,10 @@ def _interpretation(event_returns: pd.DataFrame, data_quality_flag: str) -> str:
 
     rows = event_returns[
         (event_returns["return_window"] == "0_p5")
-        & (event_returns["benchmark_ticker"].isin(["SOXX", "SMH", "QQQ"]))
+        & (
+            event_returns["benchmark_ticker"].isin(["SOXX", "SMH", "QQQ"])
+            | (event_returns["benchmark_type"] == "factor_model")
+        )
     ]
     if rows.empty:
         return "No benchmark attribution is available for interpretation."
@@ -203,6 +211,12 @@ def _interpretation(event_returns: pd.DataFrame, data_quality_flag: str) -> str:
     preferred = _preferred_abnormal_return(rows)
     if pd.isna(preferred):
         return "Benchmark attribution is present but abnormal return is unavailable."
+    if _has_complete_factor_model(rows):
+        if preferred >= 0.03:
+            return "The reaction looks positive versus the pre-event factor model."
+        if preferred <= -0.03:
+            return "The reaction looks negative versus the pre-event factor model."
+        return "The reaction was broadly in line with the pre-event factor model."
     if preferred >= 0.03:
         return "The reaction looks company- or chain-specific positive, not just beta."
     if preferred <= -0.03:
@@ -259,6 +273,14 @@ def _review_confidence(
 
 
 def _preferred_abnormal_return(rows: pd.DataFrame) -> float:
+    factor_rows = rows[
+        (rows["benchmark_type"] == "factor_model")
+        & (rows["data_quality_flag"].isin(["complete", "mapped_reaction_date"]))
+    ]
+    if not factor_rows.empty:
+        value = factor_rows.iloc[0]["abnormal_return"]
+        if pd.notna(value):
+            return float(value)
     for benchmark in ("SOXX", "SMH", "QQQ"):
         benchmark_rows = rows[rows["benchmark_ticker"] == benchmark]
         if not benchmark_rows.empty:
@@ -266,6 +288,15 @@ def _preferred_abnormal_return(rows: pd.DataFrame) -> float:
             if pd.notna(value):
                 return float(value)
     return float("nan")
+
+
+def _has_complete_factor_model(rows: pd.DataFrame) -> bool:
+    factor_rows = rows[
+        (rows["benchmark_type"] == "factor_model")
+        & (rows["data_quality_flag"].isin(["complete", "mapped_reaction_date"]))
+        & rows["abnormal_return"].notna()
+    ]
+    return not factor_rows.empty
 
 
 def _first_raw_return(event_returns: pd.DataFrame, return_window: str) -> float:

@@ -44,13 +44,16 @@ flowchart LR
 : Manufacturing-side demand read-through. Use actual announcement dates for event studies.
 
 `event_returns`
-: Long-format event attribution table. For each event and affected ticker, compare raw return against QQQ, SOXX, and SMH across windows such as `m1_p1`, `0_p1`, `0_p5`, and `0_p20`. If raw return is strong but abnormal return is weak, the move was mostly market or sector beta.
+: Long-format event attribution table. For each event and affected ticker, compare raw return against QQQ, SOXX, SMH, and the pre-event `QQQ + SOXX + Δ10Y` factor model across windows such as `m1_p1`, `0_p1`, `0_p5`, and `0_p20`. If raw return is strong but factor abnormal return is weak, the move was mostly beta.
 
 `event_reviews`
 : Human-readable event recap generated from the event loop. Use it as the first draft of an event memo, then manually verify the interpretation and add missing fundamental context.
 
 `segment_features`
-: Company driver features built from curated segment KPIs. Current automatic coverage starts with TSMC monthly revenue; GOOGL/NVDA/AMD require manually verified segment rows before their segment features appear.
+: Company driver features built from curated and source-linked segment KPIs. Use them to connect price reactions back to Cloud, Data Center, margin, cash-flow, and TSM demand drivers.
+
+`factor_residuals`
+: Daily decomposition of actual return into expected return and residual return using PIT rolling exposures. Use `residual_return_20d` and `residual_return_60d` to check whether recent strength is company-specific after Nasdaq, semiconductor, and rate moves.
 
 ## Practical Interpretation Order
 
@@ -62,3 +65,4 @@ flowchart LR
 6. Read `event_returns` with `event_metrics` before writing an event memo, so the explanation ties price reaction to evidence rather than narrative alone.
 7. Use `event_reviews.data_quality_flag` to separate completed event windows from incomplete ones, especially for very recent events.
 8. Use `segment_features` to connect the market reaction back to company operating drivers.
+9. Use `factor_residuals` to confirm whether the move survived QQQ/SOXX/rate attribution.

@@ -417,6 +417,61 @@ SCHEMA_SQL = [
         PRIMARY KEY (date, ticker)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS market_factor_inputs (
+        date DATE NOT NULL,
+        qqq_return_1d DOUBLE,
+        soxx_return_1d DOUBLE,
+        smh_return_1d DOUBLE,
+        spy_return_1d DOUBLE,
+        tnx_close DOUBLE,
+        delta_tnx_bps DOUBLE,
+        semi_specific_return_1d DOUBLE,
+        data_quality_flag TEXT,
+        source TEXT,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (date)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS factor_exposures (
+        date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        model_name TEXT NOT NULL,
+        lookback_window INTEGER NOT NULL,
+        n_obs INTEGER,
+        alpha_daily DOUBLE,
+        beta_qqq DOUBLE,
+        beta_soxx DOUBLE,
+        beta_tnx_bps DOUBLE,
+        r2 DOUBLE,
+        factor_corr_qqq_soxx DOUBLE,
+        data_quality_flag TEXT,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (date, ticker, model_name, lookback_window)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS factor_residuals (
+        date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        model_name TEXT NOT NULL,
+        lookback_window INTEGER NOT NULL,
+        stock_return_1d DOUBLE,
+        expected_return_1d DOUBLE,
+        residual_return_1d DOUBLE,
+        market_contribution_1d DOUBLE,
+        sector_contribution_1d DOUBLE,
+        rate_contribution_1d DOUBLE,
+        alpha_contribution_1d DOUBLE,
+        residual_return_5d DOUBLE,
+        residual_return_20d DOUBLE,
+        residual_return_60d DOUBLE,
+        data_quality_flag TEXT,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (date, ticker, model_name, lookback_window)
+    )
+    """,
 ]
 
 MIGRATION_SQL = [
