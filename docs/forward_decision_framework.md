@@ -16,6 +16,10 @@ The first version uses:
 It creates price cones for 21, 63, 126, and 252 trading days. The cone is a
 scenario range, not a price target.
 
+The cone uses a tail-risk multiplier calibrated against historical coverage. The
+goal is not to maximize upside precision; it is to avoid understating downside
+range.
+
 Interpretation:
 
 - `p10_price`: downside scenario if volatility works against the current drift
@@ -26,6 +30,7 @@ Interpretation:
 ## Investability Score
 
 The score is a research-priority score. It is not a buy/sell signal.
+Model confidence is capped below 100% by design.
 
 ```text
 Investability =
@@ -63,3 +68,5 @@ Before investing, answer these in order:
 6. Is valuation risk tolerable relative to growth quality?
 7. Is there a near-term event that can invalidate the thesis?
 8. What would prove the thesis wrong?
+
+See `docs/strategy_loopholes.md` for the current loophole audit.

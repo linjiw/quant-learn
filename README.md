@@ -22,6 +22,7 @@ The first version is deliberately a research system, not an auto-trading system.
 9. Standardized SEC-derived `fundamentals_quarterly` research snapshots
 
 For the design rationale and table definitions, see `docs/system_design.md`.
+For the current loophole audit, see `docs/strategy_loopholes.md`.
 
 ## Setup
 

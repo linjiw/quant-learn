@@ -211,10 +211,29 @@ SCHEMA_SQL = [
         valuation_score DOUBLE,
         risk_score DOUBLE,
         event_score DOUBLE,
+        data_quality_score DOUBLE,
+        model_confidence DOUBLE,
+        confidence_cap_reason TEXT,
         key_flags TEXT,
         notes TEXT,
         ingested_at TIMESTAMP NOT NULL,
         PRIMARY KEY (as_of_date, ticker)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS forward_model_validation (
+        validation_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        horizon_days INTEGER NOT NULL,
+        sample_size INTEGER,
+        p10_p90_coverage DOUBLE,
+        p25_p75_coverage DOUBLE,
+        median_direction_accuracy DOUBLE,
+        mean_realized_return DOUBLE,
+        mean_expected_return DOUBLE,
+        method TEXT NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (validation_date, ticker, horizon_days, method)
     )
     """,
     """
@@ -262,6 +281,9 @@ MIGRATION_SQL = [
     "ALTER TABLE events ADD COLUMN IF NOT EXISTS event_name TEXT",
     "ALTER TABLE events ADD COLUMN IF NOT EXISTS source TEXT",
     "ALTER TABLE events ADD COLUMN IF NOT EXISTS importance_score DOUBLE",
+    "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS data_quality_score DOUBLE",
+    "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS model_confidence DOUBLE",
+    "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS confidence_cap_reason TEXT",
 ]
 
 
