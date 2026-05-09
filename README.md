@@ -20,7 +20,8 @@ The first version is deliberately a research system, not an auto-trading system.
 7. Manual CSV import path for verified segment KPIs
 8. Event-level return windows and data-quality flags in `event_returns`
 9. Rule-based event review summaries in `event_reviews`
-10. Standardized SEC-derived `fundamentals_quarterly` research snapshots
+10. Flexible segment KPI layer with `segments_view` and `segment_features`
+11. Standardized SEC-derived `fundamentals_quarterly` research snapshots
 
 For the design rationale and table definitions, see `docs/system_design.md`.
 For the current loophole audit, see `docs/strategy_loopholes.md`.
@@ -86,7 +87,14 @@ Manual segment KPIs:
 
 ```bash
 uv run python -m scripts.import_segments data/manual/segment_kpis_template.csv
+uv run python -m scripts.build_tsmc_segment_kpis --months 24
+uv run python -m scripts.build_segment_features
+uv run python -m scripts.build_segment_dashboard
 ```
+
+`segment_kpis` is manual-first for company segment disclosures. TSMC monthly revenue is
+bridged automatically from the official `tsmc_monthly_revenue` table; GOOGL/NVDA/AMD
+segment rows should be curated from earnings releases or filings before import.
 
 SEC-derived quarterly fundamentals:
 

@@ -145,6 +145,7 @@ SCHEMA_SQL = [
         model_name TEXT NOT NULL,
         data_quality_flag TEXT,
         missing_reason TEXT,
+        analysis_status TEXT,
         ingested_at TIMESTAMP NOT NULL,
         PRIMARY KEY (
             event_id,
@@ -170,6 +171,7 @@ SCHEMA_SQL = [
         thesis_impact TEXT,
         confidence DOUBLE,
         data_quality_flag TEXT,
+        analysis_status TEXT,
         created_at TIMESTAMP NOT NULL,
         ingested_at TIMESTAMP NOT NULL,
         PRIMARY KEY (event_id, affected_ticker)
@@ -298,17 +300,43 @@ SCHEMA_SQL = [
     """,
     """
     CREATE TABLE IF NOT EXISTS segment_kpis (
-        ticker TEXT NOT NULL,
-        fiscal_period TEXT NOT NULL,
+        segment_kpi_id TEXT NOT NULL,
+        period_end DATE NOT NULL,
         fiscal_year INTEGER,
-        period_end DATE,
-        segment_name TEXT NOT NULL,
-        metric_name TEXT NOT NULL,
-        value DOUBLE,
+        fiscal_quarter TEXT,
+        period_type TEXT NOT NULL,
+        ticker TEXT NOT NULL,
+        kpi_group TEXT NOT NULL,
+        segment_name TEXT,
+        kpi_name TEXT NOT NULL,
+        kpi_value DOUBLE,
         unit TEXT,
+        currency TEXT,
+        source_type TEXT,
         source_url TEXT,
+        source_accession_number TEXT,
+        filed_date DATE,
+        is_reported BOOLEAN,
+        is_derived BOOLEAN,
+        derivation_method TEXT,
+        confidence TEXT,
+        notes TEXT,
         ingested_at TIMESTAMP NOT NULL,
-        PRIMARY KEY (ticker, fiscal_period, segment_name, metric_name)
+        PRIMARY KEY (segment_kpi_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS segment_features (
+        date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        feature_name TEXT NOT NULL,
+        feature_value DOUBLE,
+        feature_score DOUBLE,
+        direction TEXT,
+        confidence DOUBLE,
+        source_kpi_ids TEXT,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (date, ticker, feature_name)
     )
     """,
     """
@@ -351,6 +379,8 @@ MIGRATION_SQL = [
     "ALTER TABLE event_metrics ADD COLUMN IF NOT EXISTS surprise_direction TEXT",
     "ALTER TABLE event_returns ADD COLUMN IF NOT EXISTS data_quality_flag TEXT",
     "ALTER TABLE event_returns ADD COLUMN IF NOT EXISTS missing_reason TEXT",
+    "ALTER TABLE event_returns ADD COLUMN IF NOT EXISTS analysis_status TEXT",
+    "ALTER TABLE event_reviews ADD COLUMN IF NOT EXISTS analysis_status TEXT",
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS data_quality_score DOUBLE",
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS model_confidence DOUBLE",
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS confidence_cap_reason TEXT",
@@ -373,6 +403,8 @@ def initialize_database(db_path: Path = DEFAULT_DB_PATH) -> None:
         for statement in MIGRATION_SQL:
             conn.execute(statement)
         _ensure_event_returns_long_schema(conn)
+        _ensure_segment_kpis_v09_schema(conn)
+        _create_segment_views(conn)
 
 
 def _ensure_event_returns_long_schema(conn: duckdb.DuckDBPyConnection) -> None:
@@ -415,6 +447,7 @@ def _ensure_event_returns_long_schema(conn: duckdb.DuckDBPyConnection) -> None:
             model_name TEXT NOT NULL,
             data_quality_flag TEXT,
             missing_reason TEXT,
+            analysis_status TEXT,
             ingested_at TIMESTAMP NOT NULL,
             PRIMARY KEY (
                 event_id,
@@ -425,6 +458,122 @@ def _ensure_event_returns_long_schema(conn: duckdb.DuckDBPyConnection) -> None:
                 model_name
             )
         )
+        """
+    )
+
+
+def _ensure_segment_kpis_v09_schema(conn: duckdb.DuckDBPyConnection) -> None:
+    """Ensure segment_kpis uses the V0.9 flexible KPI schema."""
+
+    columns = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info('segment_kpis')").fetchall()
+    }
+    if "segment_kpi_id" in columns and "kpi_name" in columns:
+        return
+
+    row_count = conn.execute("SELECT COUNT(*) FROM segment_kpis").fetchone()[0]
+    if row_count:
+        raise RuntimeError(
+            "segment_kpis still uses the legacy schema and contains rows. "
+            "Export or migrate those rows before initializing the V0.9 schema."
+        )
+
+    conn.execute("DROP TABLE segment_kpis")
+    conn.execute(
+        """
+        CREATE TABLE segment_kpis (
+            segment_kpi_id TEXT NOT NULL,
+            period_end DATE NOT NULL,
+            fiscal_year INTEGER,
+            fiscal_quarter TEXT,
+            period_type TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            kpi_group TEXT NOT NULL,
+            segment_name TEXT,
+            kpi_name TEXT NOT NULL,
+            kpi_value DOUBLE,
+            unit TEXT,
+            currency TEXT,
+            source_type TEXT,
+            source_url TEXT,
+            source_accession_number TEXT,
+            filed_date DATE,
+            is_reported BOOLEAN,
+            is_derived BOOLEAN,
+            derivation_method TEXT,
+            confidence TEXT,
+            notes TEXT,
+            ingested_at TIMESTAMP NOT NULL,
+            PRIMARY KEY (segment_kpi_id)
+        )
+        """
+    )
+
+
+def _create_segment_views(conn: duckdb.DuckDBPyConnection) -> None:
+    """Create normalized segment KPI views."""
+
+    conn.execute(
+        """
+        CREATE OR REPLACE VIEW segments_view AS
+        WITH segment_rows AS (
+            SELECT
+                segment_kpi_id,
+                period_end,
+                fiscal_year,
+                fiscal_quarter,
+                ticker,
+                segment_name,
+                kpi_name,
+                kpi_value,
+                source_url,
+                source_accession_number,
+                confidence
+            FROM segment_kpis
+            WHERE kpi_group IN ('segment', 'reportable_segment', 'end_market', 'platform')
+              AND segment_name IS NOT NULL
+        ),
+        pivoted AS (
+            SELECT
+                period_end,
+                fiscal_year,
+                fiscal_quarter,
+                ticker,
+                segment_name,
+                MAX(CASE WHEN kpi_name = 'revenue' THEN kpi_value END) AS segment_revenue,
+                MAX(CASE WHEN kpi_name = 'operating_income' THEN kpi_value END)
+                    AS segment_operating_income,
+                MAX(CASE WHEN kpi_name = 'margin' THEN kpi_value END) AS reported_margin,
+                MAX(source_url) AS source_url,
+                MAX(source_accession_number) AS source_accession_number,
+                MAX(confidence) AS confidence
+            FROM segment_rows
+            GROUP BY period_end, fiscal_year, fiscal_quarter, ticker, segment_name
+        )
+        SELECT
+            period_end,
+            fiscal_year,
+            fiscal_quarter,
+            ticker,
+            segment_name,
+            segment_revenue,
+            segment_operating_income,
+            COALESCE(
+                reported_margin,
+                segment_operating_income / NULLIF(segment_revenue, 0)
+            ) AS segment_margin,
+            segment_revenue
+                / NULLIF(
+                    LAG(segment_revenue, 4)
+                    OVER (PARTITION BY ticker, segment_name ORDER BY period_end),
+                    0
+                )
+                - 1 AS segment_revenue_growth_yoy,
+            source_url,
+            source_accession_number,
+            confidence
+        FROM pivoted
         """
     )
 

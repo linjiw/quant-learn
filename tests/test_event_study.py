@@ -11,7 +11,12 @@ from quant_learn.analytics.event_study import (
     validate_event_return_invariants,
 )
 from quant_learn.db import initialize_database
-from quant_learn.taxonomy import EVENT_TYPES, EXPECTED_DIRECTIONS
+from quant_learn.taxonomy import (
+    ANALYSIS_STATUSES,
+    EVENT_TYPES,
+    EXPECTED_DIRECTIONS,
+    MISSING_REASONS,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -184,6 +189,9 @@ def test_build_event_returns_uses_reaction_date_and_long_benchmark_rows(
     ].iloc[0]
     assert missing_benchmark["data_quality_flag"] == "incomplete"
     assert missing_benchmark["missing_reason"] == "missing_benchmark_price"
+    assert missing_benchmark["analysis_status"] == "data_issue"
+    assert set(result["analysis_status"]).issubset(ANALYSIS_STATUSES)
+    assert set(result["missing_reason"].dropna()).issubset(MISSING_REASONS)
 
     event_study.store_event_returns(result)
     reviews = event_reviews.build_event_reviews()
@@ -194,3 +202,4 @@ def test_build_event_returns_uses_reaction_date_and_long_benchmark_rows(
     assert "Raw return" in review["raw_reaction_summary"]
     assert "Metric evidence" in review["metric_surprise_summary"]
     assert review["data_quality_flag"] == "incomplete"
+    assert review["analysis_status"] == "data_issue"

@@ -214,6 +214,7 @@ def build_event_returns(
                         "model_name": "raw_vs_benchmark",
                         "data_quality_flag": quality_flag,
                         "missing_reason": missing_reason,
+                        "analysis_status": _analysis_status(missing_reason, quality_flag),
                         "ingested_at": ingested_at,
                     }
                 )
@@ -259,6 +260,9 @@ def _reaction_date_quality(
     reaction_date: pd.Timestamp,
 ) -> tuple[str, Optional[str]]:
     if anchor_index is None:
+        latest_trading_date = max(trading_dates) if trading_dates else None
+        if latest_trading_date is not None and reaction_date > latest_trading_date:
+            return "incomplete", "pending_future_window"
         return "incomplete", "non_trading_reaction_date"
     if trading_dates[anchor_index].date() != reaction_date.date():
         return "mapped_reaction_date", "reaction_date_mapped_to_next_trading_day"
@@ -281,11 +285,15 @@ def _event_window_return_with_quality(
     start_index = anchor_index + start_offset - 1
     end_index = anchor_index + end_offset
     if start_index < 0 or end_index >= len(price.index):
-        return None, "incomplete", "insufficient_window"
+        if end_index >= len(price.index):
+            return None, "incomplete", "pending_future_window"
+        return None, "incomplete", "insufficient_trading_days"
 
     start_price = price.iloc[start_index][ticker]
     end_price = price.iloc[end_index][ticker]
     if pd.isna(start_price) or pd.isna(end_price) or start_price == 0:
+        if ticker == "TSM":
+            return None, "incomplete", "adr_calendar_gap"
         return None, "incomplete", missing_reason
 
     return float(end_price / start_price - 1.0), "complete", None
@@ -306,6 +314,22 @@ def _combine_quality(
     if anchor_flag == "mapped_reaction_date":
         return anchor_flag, anchor_reason
     return "complete", None
+
+
+def _analysis_status(missing_reason: Optional[str], data_quality_flag: str) -> str:
+    if data_quality_flag in {"complete", "mapped_reaction_date"}:
+        return "ready"
+    if missing_reason == "pending_future_window":
+        return "partial_pending"
+    if missing_reason in {
+        "missing_ticker_price",
+        "missing_benchmark_price",
+        "insufficient_trading_days",
+        "non_trading_reaction_date",
+        "adr_calendar_gap",
+    }:
+        return "data_issue"
+    return "excluded"
 
 
 def store_event_returns(event_returns: pd.DataFrame) -> int:

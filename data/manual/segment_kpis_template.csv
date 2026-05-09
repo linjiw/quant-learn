@@ -1,1 +1,1 @@
-ticker,fiscal_period,fiscal_year,period_end,segment_name,metric_name,value,unit,source_url
+segment_kpi_id,period_end,fiscal_year,fiscal_quarter,period_type,ticker,kpi_group,segment_name,kpi_name,kpi_value,unit,currency,source_type,source_url,source_accession_number,filed_date,is_reported,is_derived,derivation_method,confidence,notes

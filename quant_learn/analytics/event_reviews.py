@@ -61,6 +61,7 @@ def build_event_reviews() -> pd.DataFrame:
                 "thesis_impact": _thesis_impact(event),
                 "confidence": confidence,
                 "data_quality_flag": data_quality_flag,
+                "analysis_status": _review_status(event_returns),
                 "created_at": ingested_at,
                 "ingested_at": ingested_at,
             }
@@ -162,6 +163,20 @@ def _review_quality(event_returns: pd.DataFrame) -> str:
     if (key_rows["data_quality_flag"] == "mapped_reaction_date").any():
         return "mapped_reaction_date"
     return "complete"
+
+
+def _review_status(event_returns: pd.DataFrame) -> str:
+    key_rows = event_returns[event_returns["return_window"].isin(["0_p1", "0_p5"])]
+    if key_rows.empty:
+        return "excluded"
+    statuses = set(key_rows["analysis_status"].dropna())
+    if statuses and statuses.issubset({"ready"}):
+        return "ready"
+    if statuses and statuses.issubset({"ready", "partial_pending"}):
+        return "partial_pending"
+    if "data_issue" in statuses:
+        return "data_issue"
+    return "excluded"
 
 
 def _review_confidence(

@@ -65,13 +65,19 @@ CSV Exports
 : Surprise and KPI evidence for an event. First-pass data includes EPS surprise for earnings events and TSMC monthly revenue YoY changes.
 
 `event_returns`
-: Long-format event-level CAR windows and abnormal returns versus QQQ, SOXX, and SMH. Rows are keyed by event, affected ticker, return window, and benchmark. This is the core table for repeatable event review.
+: Long-format event-level CAR windows and abnormal returns versus QQQ, SOXX, and SMH. Rows are keyed by event, affected ticker, return window, and benchmark. It carries `data_quality_flag`, `missing_reason`, and `analysis_status`, so pending future windows are separated from true data issues.
 
 `event_reviews`
 : Rule-based summaries built from `events`, `event_impacts`, `event_metrics`, and `event_returns`. Each row explains one event impact with raw reaction, benchmark attribution, metric surprise, thesis impact, confidence, and data-quality status.
 
 `segment_kpis`
-: Manually verified segment-level KPIs. This is manual-first because company segment disclosures are not reliably exposed through simple companyfacts calls.
+: Flexible manually verified segment-level KPIs. This is manual-first because company segment disclosures are not reliably exposed through simple companyfacts calls. TSMC monthly revenue can be bridged automatically from the official monthly table.
+
+`segments_view`
+: Normalized view over `segment_kpis` for revenue, operating income, margin, and YoY growth where the source data supports it.
+
+`segment_features`
+: Segment-derived driver features for scorecards and future evidence cards.
 
 `factor_dashboard`
 : Daily derived metrics: returns, relative returns, rolling beta, realized vol, drawdown, residual return, and volume z-score.
@@ -113,6 +119,9 @@ uv run python -m scripts.import_events data/manual/events_ai_compute.csv
 uv run python -m scripts.import_event_impacts data/manual/event_impacts_ai_compute.csv
 uv run python -m scripts.import_event_metrics data/manual/event_metrics_ai_compute.csv
 uv run python -m scripts.import_segments data/manual/segment_kpis_template.csv
+uv run python -m scripts.build_tsmc_segment_kpis --months 24
+uv run python -m scripts.build_segment_features
+uv run python -m scripts.build_segment_dashboard
 uv run python -m scripts.build_price_features
 uv run python -m scripts.build_fundamentals
 uv run python -m scripts.build_factor_dashboard
@@ -125,7 +134,7 @@ uv run python -m scripts.run_event_study --event-type earnings --window-before 5
 
 ## Next Implementation Steps
 
-1. Add hyperscaler capex events and product/export-control events to the curated event set.
-2. Add segment KPI extraction helpers one company at a time, starting with GOOGL and AMD because their segment tables are cleaner.
-3. Add evidence cards and scorecard evidence IDs after the first event-review outputs are manually reviewed.
+1. Fill curated GOOGL/NVDA/AMD segment KPI rows from primary earnings releases and filings.
+2. Add fundamental point-in-time cash-flow lineage for OCF, CapEx, and FCF.
+3. Add evidence cards and scorecard evidence IDs after segment features are reviewed.
 4. Add an IV monitor table and adapter after choosing an options data source.

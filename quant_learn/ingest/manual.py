@@ -1,5 +1,6 @@
 """Manual CSV importers for curated events and segment KPIs."""
 
+import hashlib
 from pathlib import Path
 from typing import Optional
 
@@ -222,30 +223,66 @@ def import_segment_kpis(path: Path) -> int:
     """Import manually verified segment KPI observations from CSV."""
 
     df = pd.read_csv(path)
-    required = {"ticker", "fiscal_period", "segment_name", "metric_name", "value"}
+    df = _normalize_segment_kpi_columns(df)
+    required = {"period_end", "ticker", "period_type", "kpi_group", "kpi_name", "kpi_value"}
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"Missing required segment KPI columns: {sorted(missing)}")
 
-    for optional in ("fiscal_year", "period_end", "unit", "source_url"):
+    for optional in (
+        "segment_kpi_id",
+        "fiscal_year",
+        "fiscal_quarter",
+        "segment_name",
+        "unit",
+        "currency",
+        "source_type",
+        "source_url",
+        "source_accession_number",
+        "filed_date",
+        "is_reported",
+        "is_derived",
+        "derivation_method",
+        "confidence",
+        "notes",
+    ):
         if optional not in df.columns:
             df[optional] = None
 
     df["period_end"] = pd.to_datetime(df["period_end"], errors="coerce").dt.date
+    df["filed_date"] = pd.to_datetime(df["filed_date"], errors="coerce").dt.date
     df["fiscal_year"] = pd.to_numeric(df["fiscal_year"], errors="coerce").astype("Int64")
-    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df["kpi_value"] = pd.to_numeric(df["kpi_value"], errors="coerce")
+    df["is_reported"] = df["is_reported"].map(_parse_optional_bool)
+    df["is_derived"] = df["is_derived"].map(_parse_optional_bool)
+    df["segment_kpi_id"] = df.apply(
+        lambda row: _coalesce_text(row["segment_kpi_id"], _segment_kpi_id(row)),
+        axis=1,
+    )
     df["ingested_at"] = utc_now_naive()
     df = df[
         [
-            "ticker",
-            "fiscal_period",
-            "fiscal_year",
+            "segment_kpi_id",
             "period_end",
+            "fiscal_year",
+            "fiscal_quarter",
+            "period_type",
+            "ticker",
+            "kpi_group",
             "segment_name",
-            "metric_name",
-            "value",
+            "kpi_name",
+            "kpi_value",
             "unit",
+            "currency",
+            "source_type",
             "source_url",
+            "source_accession_number",
+            "filed_date",
+            "is_reported",
+            "is_derived",
+            "derivation_method",
+            "confidence",
+            "notes",
             "ingested_at",
         ]
     ]
@@ -255,7 +292,7 @@ def import_segment_kpis(path: Path) -> int:
             conn,
             df,
             "segment_kpis",
-            ["ticker", "fiscal_period", "segment_name", "metric_name"],
+            ["segment_kpi_id"],
         )
 
 
@@ -316,3 +353,37 @@ def _infer_surprise_direction(surprise_value: object, surprise_pct: object) -> s
     if value < 0:
         return "negative"
     return "neutral"
+
+
+def _normalize_segment_kpi_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Accept both the legacy and V0.9 segment KPI CSV shapes."""
+
+    normalized = df.copy()
+    rename_map = {
+        "metric_name": "kpi_name",
+        "value": "kpi_value",
+    }
+    normalized = normalized.rename(
+        columns={old: new for old, new in rename_map.items() if old in normalized.columns}
+    )
+    if "period_type" not in normalized.columns:
+        normalized["period_type"] = "quarter"
+    if "kpi_group" not in normalized.columns:
+        normalized["kpi_group"] = "segment"
+    if "fiscal_quarter" not in normalized.columns and "fiscal_period" in normalized.columns:
+        normalized["fiscal_quarter"] = normalized["fiscal_period"]
+    return normalized
+
+
+def _segment_kpi_id(row: pd.Series) -> str:
+    key_parts = [
+        row.get("ticker"),
+        row.get("period_end"),
+        row.get("period_type"),
+        row.get("kpi_group"),
+        row.get("segment_name"),
+        row.get("kpi_name"),
+    ]
+    key = "|".join("" if pd.isna(part) else str(part) for part in key_parts)
+    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:12]
+    return f"segment_kpi_{digest}"

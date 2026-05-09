@@ -1,0 +1,6 @@
+segment_kpi_id,period_end,fiscal_year,fiscal_quarter,period_type,ticker,kpi_group,segment_name,kpi_name,kpi_value,unit,currency,source_type,source_url,source_accession_number,filed_date,is_reported,is_derived,derivation_method,confidence,notes
+,2026-03-31,2026,Q1,quarter,GOOGL,segment,Google Cloud,revenue,,USD_mn,USD,10Q,,,,true,false,,high,Fill from Alphabet earnings release or filing.
+,2026-03-31,2026,Q1,quarter,GOOGL,segment,Google Cloud,operating_income,,USD_mn,USD,10Q,,,,true,false,,high,Fill from Alphabet earnings release or filing.
+,2026-03-31,2026,Q1,quarter,NVDA,end_market,Data Center,revenue,,USD_mn,USD,earnings_release,,,,true,false,,high,Fill from NVIDIA quarterly results.
+,2026-03-31,2026,Q1,quarter,AMD,reportable_segment,Data Center,revenue,,USD_mn,USD,10Q,,,,true,false,,high,Fill from AMD quarterly results.
+,2026-03-31,2026,Q1,quarter,TSM,platform,HPC,revenue_share,,percent,,earnings_release,,,,true,false,,high,Fill from TSMC quarterly presentation.

@@ -49,6 +49,9 @@ flowchart LR
 `event_reviews`
 : Human-readable event recap generated from the event loop. Use it as the first draft of an event memo, then manually verify the interpretation and add missing fundamental context.
 
+`segment_features`
+: Company driver features built from curated segment KPIs. Current automatic coverage starts with TSMC monthly revenue; GOOGL/NVDA/AMD require manually verified segment rows before their segment features appear.
+
 ## Practical Interpretation Order
 
 1. Start with cumulative return to see the trend.
@@ -58,3 +61,4 @@ flowchart LR
 5. Use TSMC revenue and curated events to ask whether the AI compute cycle is accelerating or slowing.
 6. Read `event_returns` with `event_metrics` before writing an event memo, so the explanation ties price reaction to evidence rather than narrative alone.
 7. Use `event_reviews.data_quality_flag` to separate completed event windows from incomplete ones, especially for very recent events.
+8. Use `segment_features` to connect the market reaction back to company operating drivers.
