@@ -98,6 +98,13 @@ Generate the visual research report:
 uv run python -m scripts.build_visual_report
 ```
 
+Generate forward scenario estimates and an investability scorecard:
+
+```bash
+uv run python -m scripts.ingest_valuation
+uv run python -m scripts.build_forward_analysis
+```
+
 Notebook entry points:
 
 ```text

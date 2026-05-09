@@ -67,6 +67,15 @@ CSV Exports
 `factor_dashboard`
 : Daily derived metrics: returns, relative returns, rolling beta, realized vol, drawdown, residual return, and volume z-score.
 
+`valuation_snapshots`
+: Current valuation multiples from yfinance. Treat these as screening data and verify important values against primary filings or a paid data source.
+
+`forward_price_estimates`
+: Scenario price cones for multiple horizons. These are probability ranges, not target prices.
+
+`investment_scorecard`
+: Current setup labels and component scores for investability review.
+
 ## Design Choices
 
 1. DuckDB first
@@ -78,8 +87,8 @@ CSV Exports
 3. Event study requires curated event dates
 : TSMC monthly revenue periods are not the same as announcement dates. For lead-lag research, use actual announcement dates in `events`.
 
-4. Scores are not implemented yet
-: The scoring model should come after the dashboard and event-study data are validated. Otherwise the score becomes a false buy/sell signal.
+4. Scores are decision support
+: The scorecard ranks research priority and setup quality. It is not a buy/sell command.
 
 5. Single writer
 : DuckDB supports many reads but only one writer at a time. Run ingestion scripts sequentially when writing to the same database file.
@@ -97,6 +106,8 @@ uv run python -m scripts.build_price_features
 uv run python -m scripts.build_fundamentals
 uv run python -m scripts.build_factor_dashboard
 uv run python -m scripts.build_event_returns
+uv run python -m scripts.ingest_valuation
+uv run python -m scripts.build_forward_analysis
 uv run python -m scripts.run_event_study --event-type earnings --window-before 5 --window-after 20
 ```
 

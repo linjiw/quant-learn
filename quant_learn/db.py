@@ -158,6 +158,66 @@ SCHEMA_SQL = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS valuation_snapshots (
+        snapshot_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        price DOUBLE,
+        market_cap DOUBLE,
+        enterprise_value DOUBLE,
+        trailing_pe DOUBLE,
+        forward_pe DOUBLE,
+        price_to_sales DOUBLE,
+        price_to_book DOUBLE,
+        ev_to_ebitda DOUBLE,
+        trailing_eps DOUBLE,
+        forward_eps DOUBLE,
+        dividend_yield DOUBLE,
+        beta DOUBLE,
+        source TEXT NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (snapshot_date, ticker, source)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS forward_price_estimates (
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        horizon_days INTEGER NOT NULL,
+        current_price DOUBLE,
+        expected_return DOUBLE,
+        expected_price DOUBLE,
+        p10_price DOUBLE,
+        p25_price DOUBLE,
+        p50_price DOUBLE,
+        p75_price DOUBLE,
+        p90_price DOUBLE,
+        probability_gain DOUBLE,
+        annualized_mu DOUBLE,
+        annualized_vol DOUBLE,
+        method TEXT NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (as_of_date, ticker, horizon_days, method)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS investment_scorecard (
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        decision_label TEXT,
+        investability_score DOUBLE,
+        momentum_score DOUBLE,
+        alpha_score DOUBLE,
+        quality_score DOUBLE,
+        valuation_score DOUBLE,
+        risk_score DOUBLE,
+        event_score DOUBLE,
+        key_flags TEXT,
+        notes TEXT,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (as_of_date, ticker)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS segment_kpis (
         ticker TEXT NOT NULL,
         fiscal_period TEXT NOT NULL,
