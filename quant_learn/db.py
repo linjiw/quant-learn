@@ -263,6 +263,53 @@ SCHEMA_SQL = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS evidence_cards (
+        evidence_id TEXT NOT NULL,
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        evidence_type TEXT NOT NULL,
+        source_table TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        source_date DATE,
+        available_date DATE,
+        direction TEXT NOT NULL,
+        strength TEXT NOT NULL,
+        confidence DOUBLE,
+        materiality DOUBLE,
+        summary TEXT,
+        metric_name TEXT,
+        metric_value DOUBLE,
+        comparison_value DOUBLE,
+        interpretation TEXT,
+        thesis_tag TEXT,
+        risk_tag TEXT,
+        data_quality_flag TEXT,
+        created_at TIMESTAMP NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (evidence_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS research_stance (
+        stance_id TEXT NOT NULL,
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        stance TEXT NOT NULL,
+        confidence DOUBLE,
+        thesis_summary TEXT,
+        positive_evidence_ids TEXT,
+        negative_evidence_ids TEXT,
+        mixed_evidence_ids TEXT,
+        risk_flags TEXT,
+        falsifiers TEXT,
+        next_catalysts TEXT,
+        data_quality_caveats TEXT,
+        created_at TIMESTAMP NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (stance_id)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS signals (
         date DATE NOT NULL,
         ticker TEXT NOT NULL,

@@ -55,6 +55,21 @@ flowchart LR
 `factor_residuals`
 : Daily decomposition of actual return into expected return and residual return using PIT rolling exposures. Use `residual_return_20d` and `residual_return_60d` to check whether recent strength is company-specific after Nasdaq, semiconductor, and rate moves.
 
+`evidence_cards`
+: Source-linked evidence rows. Direction says whether the evidence supports or hurts the
+current thesis; strength says how large the signal is; confidence says how reliable the
+system thinks the evidence is. Do not treat one evidence card as a decision.
+
+`research_stance`
+: The per-ticker synthesis layer. It combines event, segment, cash-flow, and factor
+evidence with ticker-specific weights and confidence caps. Stance is a research view,
+not a trading command.
+
+`reports/decision_memo.md`
+: The weekly decision memo. Read the executive table first, then check each ticker's
+positive evidence, negative/mixed evidence, risk flags, falsifiers, next catalysts, and
+data-quality caveats.
+
 ## Practical Interpretation Order
 
 1. Start with cumulative return to see the trend.
@@ -66,3 +81,5 @@ flowchart LR
 7. Use `event_reviews.data_quality_flag` to separate completed event windows from incomplete ones, especially for very recent events.
 8. Use `segment_features` to connect the market reaction back to company operating drivers.
 9. Use `factor_residuals` to confirm whether the move survived QQQ/SOXX/rate attribution.
+10. Use `evidence_cards` to audit what the system is using as proof.
+11. Use `research_stance` and `reports/decision_memo.md` only after checking the caveats and falsifiers.

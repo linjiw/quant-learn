@@ -1,0 +1,1018 @@
+"""Evidence cards, research stance, and decision memo generation."""
+
+import hashlib
+from pathlib import Path
+from typing import Optional
+
+import pandas as pd
+
+from quant_learn.config import CORE_TICKERS
+from quant_learn.db import connect, initialize_database, upsert_dataframe
+from quant_learn.time import utc_now_naive
+
+EVIDENCE_COLUMNS = [
+    "evidence_id",
+    "as_of_date",
+    "ticker",
+    "evidence_type",
+    "source_table",
+    "source_id",
+    "source_date",
+    "available_date",
+    "direction",
+    "strength",
+    "confidence",
+    "materiality",
+    "summary",
+    "metric_name",
+    "metric_value",
+    "comparison_value",
+    "interpretation",
+    "thesis_tag",
+    "risk_tag",
+    "data_quality_flag",
+    "created_at",
+    "ingested_at",
+]
+
+STANCE_COLUMNS = [
+    "stance_id",
+    "as_of_date",
+    "ticker",
+    "stance",
+    "confidence",
+    "thesis_summary",
+    "positive_evidence_ids",
+    "negative_evidence_ids",
+    "mixed_evidence_ids",
+    "risk_flags",
+    "falsifiers",
+    "next_catalysts",
+    "data_quality_caveats",
+    "created_at",
+    "ingested_at",
+]
+
+EVIDENCE_TYPE_WEIGHTS = {
+    "GOOGL": {
+        "segment_momentum": 0.30,
+        "cash_flow_quality": 0.30,
+        "event_reaction": 0.15,
+        "factor_residual": 0.15,
+        "risk": 0.10,
+    },
+    "NVDA": {
+        "segment_momentum": 0.35,
+        "event_reaction": 0.20,
+        "factor_residual": 0.20,
+        "risk": 0.15,
+        "cash_flow_quality": 0.10,
+    },
+    "AMD": {
+        "segment_momentum": 0.30,
+        "factor_residual": 0.25,
+        "event_reaction": 0.20,
+        "risk": 0.15,
+        "cash_flow_quality": 0.10,
+    },
+    "TSM": {
+        "segment_momentum": 0.35,
+        "cash_flow_quality": 0.20,
+        "factor_residual": 0.20,
+        "risk": 0.15,
+        "event_reaction": 0.10,
+    },
+}
+
+STATIC_THESIS = {
+    "GOOGL": (
+        "GOOGL remains a high-quality AI/Cloud compounder if Search resilience and "
+        "Cloud margin expansion can offset AI CapEx pressure."
+    ),
+    "NVDA": (
+        "NVDA retains AI compute platform leadership if Data Center growth, gross "
+        "margin, and supply visibility remain strong."
+    ),
+    "AMD": (
+        "AMD upside depends on becoming a credible second supplier in AI accelerators "
+        "while sustaining EPYC/Data Center momentum."
+    ),
+    "TSM": (
+        "TSM remains the manufacturing bottleneck of AI compute if monthly revenue "
+        "momentum, HPC mix, advanced node mix, and margin quality remain strong."
+    ),
+}
+
+FALSIFIERS = {
+    "GOOGL": [
+        "Search revenue growth decelerates materially.",
+        "Google Cloud growth slows while Cloud margin stalls.",
+        "CapEx / OCF rises further and FCF margin compresses.",
+        "Regulatory outcomes impair core advertising economics.",
+    ],
+    "NVDA": [
+        "Data Center growth or guidance decelerates sharply.",
+        "Gross margin compresses materially.",
+        "Hyperscaler CapEx commentary weakens.",
+        "AMD / ASIC competition begins pressuring pricing.",
+        "Export control impact becomes larger than expected.",
+    ],
+    "AMD": [
+        "Data Center growth fails to translate into margin improvement.",
+        "MI accelerator commentary or guidance disappoints.",
+        "Client/Gaming cyclicality masks weak AI traction.",
+        "NVDA platform dominance prevents meaningful share gain.",
+    ],
+    "TSM": [
+        "Monthly revenue decelerates.",
+        "HPC or advanced node mix weakens.",
+        "Overseas fab costs pressure gross margin.",
+        "CapEx rises without revenue/margin validation.",
+        "Taiwan/geopolitical risk widens valuation discount.",
+    ],
+}
+
+NEXT_CATALYSTS = {
+    "GOOGL": [
+        "next earnings",
+        "Cloud margin update",
+        "AI CapEx commentary",
+        "regulatory rulings",
+    ],
+    "NVDA": [
+        "next earnings",
+        "Data Center guidance",
+        "product roadmap events",
+        "export-control updates",
+    ],
+    "AMD": [
+        "next earnings",
+        "MI accelerator commentary",
+        "EPYC/Data Center margins",
+        "AI event updates",
+    ],
+    "TSM": [
+        "monthly revenue",
+        "quarterly earnings",
+        "HPC/node mix update",
+        "CapEx and margin guidance",
+    ],
+}
+
+STRENGTH_VALUES = {"low": 0.25, "medium": 0.50, "high": 0.75, "very_high": 1.00}
+STANCE_ORDER = ["high_risk", "cautious", "neutral", "constructive", "strong_constructive"]
+
+
+def build_evidence_cards(as_of_date: Optional[str] = None) -> pd.DataFrame:
+    """Build evidence cards from event, segment, cash-flow, and factor layers."""
+
+    initialize_database()
+    with connect() as conn:
+        event_reviews = conn.execute("SELECT * FROM event_reviews").fetchdf()
+        event_returns = conn.execute("SELECT * FROM event_returns").fetchdf()
+        segment_features = conn.execute("SELECT * FROM segment_features").fetchdf()
+        cash_flow_features = conn.execute("SELECT * FROM cash_flow_features").fetchdf()
+        factor_residuals = conn.execute(
+            """
+            SELECT
+                r.*,
+                e.r2,
+                e.factor_corr_qqq_soxx,
+                e.beta_qqq,
+                e.beta_soxx,
+                e.beta_tnx_bps
+            FROM factor_residuals r
+            LEFT JOIN factor_exposures e
+              ON r.date = e.date
+             AND r.ticker = e.ticker
+             AND r.model_name = e.model_name
+             AND r.lookback_window = e.lookback_window
+            """
+        ).fetchdf()
+
+    cards = []
+    effective_as_of = _as_of_date(
+        as_of_date,
+        event_reviews,
+        segment_features,
+        cash_flow_features,
+        factor_residuals,
+    )
+    created_at = utc_now_naive()
+    cards.extend(_event_evidence(event_reviews, event_returns, effective_as_of, created_at))
+    cards.extend(_segment_evidence(segment_features, effective_as_of, created_at))
+    cards.extend(_cash_flow_evidence(cash_flow_features, effective_as_of, created_at))
+    cards.extend(_factor_evidence(factor_residuals, effective_as_of, created_at))
+
+    if not cards:
+        return pd.DataFrame(columns=EVIDENCE_COLUMNS)
+    evidence = pd.DataFrame(cards)
+    return evidence[EVIDENCE_COLUMNS].drop_duplicates(subset=["evidence_id"], keep="last")
+
+
+def store_evidence_cards(evidence_cards: pd.DataFrame) -> int:
+    """Store evidence cards as a full rebuild."""
+
+    initialize_database()
+    with connect() as conn:
+        conn.execute("DELETE FROM evidence_cards")
+        if evidence_cards.empty:
+            return 0
+        return upsert_dataframe(conn, evidence_cards, "evidence_cards", ["evidence_id"])
+
+
+def build_research_stance(as_of_date: Optional[str] = None) -> pd.DataFrame:
+    """Build research stance rows from stored evidence cards."""
+
+    initialize_database()
+    with connect() as conn:
+        evidence = conn.execute("SELECT * FROM evidence_cards").fetchdf()
+
+    if evidence.empty:
+        return pd.DataFrame(columns=STANCE_COLUMNS)
+
+    evidence["source_date"] = pd.to_datetime(evidence["source_date"], errors="coerce")
+    effective_as_of = _as_of_date(as_of_date, evidence)
+    created_at = utc_now_naive()
+    rows = []
+    for ticker in CORE_TICKERS:
+        ticker_evidence = evidence[evidence["ticker"] == ticker].copy()
+        rows.append(_stance_row(ticker, ticker_evidence, effective_as_of, created_at))
+    return pd.DataFrame(rows)[STANCE_COLUMNS]
+
+
+def store_research_stance(research_stance: pd.DataFrame) -> int:
+    """Store research stance rows as a full rebuild."""
+
+    initialize_database()
+    with connect() as conn:
+        conn.execute("DELETE FROM research_stance")
+        if research_stance.empty:
+            return 0
+        return upsert_dataframe(conn, research_stance, "research_stance", ["stance_id"])
+
+
+def build_decision_memo(output_path: Path) -> Path:
+    """Write the AI compute four-stock decision memo."""
+
+    initialize_database()
+    with connect() as conn:
+        stance = conn.execute(
+            """
+            SELECT *
+            FROM research_stance
+            ORDER BY ticker
+            """
+        ).fetchdf()
+        evidence = conn.execute("SELECT * FROM evidence_cards").fetchdf()
+
+    lines = ["# AI Compute Four-Stock Decision Memo", ""]
+    if stance.empty:
+        lines.append("No research stance rows are available yet.")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("\n".join(lines), encoding="utf-8")
+        return output_path
+
+    as_of = pd.to_datetime(stance["as_of_date"]).max().date()
+    lines.extend([f"as_of_date: {as_of}", "", "## Executive Summary", ""])
+    lines.extend(_summary_table(stance))
+    lines.extend(["", "## Cross-Stock Read", ""])
+    lines.extend(_cross_stock_read(stance, evidence))
+
+    evidence_by_id = evidence.set_index("evidence_id") if not evidence.empty else pd.DataFrame()
+    for ticker in CORE_TICKERS:
+        row = stance[stance["ticker"] == ticker]
+        if row.empty:
+            continue
+        lines.extend(_ticker_section(row.iloc[0], evidence_by_id))
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+    return output_path
+
+
+def _event_evidence(
+    event_reviews: pd.DataFrame,
+    event_returns: pd.DataFrame,
+    as_of_date,
+    created_at,
+) -> list[dict]:
+    if event_reviews.empty:
+        return []
+
+    factor = _event_return_lookup(event_returns, prefer_factor=True)
+    fallback = _event_return_lookup(event_returns, prefer_factor=False)
+    rows = []
+    for _, review in event_reviews.iterrows():
+        ticker = review["affected_ticker"]
+        source_id = f"{review['event_id']}:{ticker}"
+        return_row = factor.get(source_id) or fallback.get(source_id)
+        metric_value = return_row.get("abnormal_return") if return_row else None
+        materiality = abs(float(metric_value)) if pd.notna(metric_value) else 0.0
+        direction = _direction_from_signed(metric_value, threshold=0.03)
+        strength = _strength_from_materiality(materiality, [0.03, 0.05, 0.10])
+        confidence = _bounded_confidence(
+            float(review.get("confidence") or 0.55)
+            * (1.0 if review.get("data_quality_flag") == "complete" else 0.75)
+        )
+        model_label = (
+            "factor-model"
+            if return_row and return_row.get("benchmark_type") == "factor_model"
+            else "benchmark"
+        )
+        summary = (
+            f"{ticker} event reaction evidence for {review['event_id']}: "
+            f"{review.get('interpretation') or 'no interpretation available'}"
+        )
+        rows.append(
+            _evidence_row(
+                as_of_date=as_of_date,
+                ticker=ticker,
+                evidence_type="event_reaction",
+                source_table="event_reviews",
+                source_id=source_id,
+                source_date=review["reaction_date"],
+                available_date=review["reaction_date"],
+                direction=direction,
+                strength=strength,
+                confidence=confidence,
+                materiality=materiality,
+                summary=summary,
+                metric_name=f"{model_label}_abnormal_0_p5",
+                metric_value=metric_value,
+                comparison_value=return_row.get("benchmark_return") if return_row else None,
+                interpretation=review.get("interpretation"),
+                thesis_tag=_extract_thesis_tag(review.get("thesis_impact")),
+                risk_tag=None,
+                data_quality_flag=review.get("data_quality_flag"),
+                created_at=created_at,
+            )
+        )
+    return rows
+
+
+def _segment_evidence(segment_features: pd.DataFrame, as_of_date, created_at) -> list[dict]:
+    if segment_features.empty:
+        return []
+    rows = []
+    latest = (
+        segment_features.sort_values("date")
+        .groupby(["ticker", "feature_name"], dropna=False)
+        .tail(1)
+    )
+    for _, feature in latest.iterrows():
+        score = feature.get("feature_score")
+        direction = _direction_from_score(score)
+        if direction == "neutral":
+            continue
+        materiality = _score_materiality(score)
+        source_id = str(
+            feature.get("source_kpi_ids")
+            or f"{feature['ticker']}:{feature['feature_name']}"
+        )
+        rows.append(
+            _evidence_row(
+                as_of_date=as_of_date,
+                ticker=feature["ticker"],
+                evidence_type="segment_momentum",
+                source_table="segment_features",
+                source_id=source_id,
+                source_date=feature["date"],
+                available_date=feature["date"],
+                direction=direction,
+                strength=_strength_from_materiality(materiality, [0.20, 0.40, 0.70]),
+                confidence=float(feature.get("confidence") or 0.6),
+                materiality=materiality,
+                summary=_segment_summary(feature, direction),
+                metric_name=feature["feature_name"],
+                metric_value=feature.get("feature_value"),
+                comparison_value=score,
+                interpretation=f"Feature score {score:.1f} is {direction}.",
+                thesis_tag=_thesis_tag_for_feature(str(feature["feature_name"])),
+                risk_tag=_risk_tag_for_feature(str(feature["feature_name"]), direction),
+                data_quality_flag="complete",
+                created_at=created_at,
+            )
+        )
+    return rows
+
+
+def _cash_flow_evidence(cash_flow_features: pd.DataFrame, as_of_date, created_at) -> list[dict]:
+    if cash_flow_features.empty:
+        return []
+    rows = []
+    latest = (
+        cash_flow_features.sort_values("date")
+        .groupby(["ticker", "feature_name"], dropna=False)
+        .tail(1)
+    )
+    for _, feature in latest.iterrows():
+        direction = str(feature.get("direction") or "neutral")
+        score_direction = _direction_from_score(feature.get("feature_score"))
+        if direction == "neutral":
+            direction = score_direction
+        if direction == "neutral":
+            continue
+        materiality = _score_materiality(feature.get("feature_score"))
+        rows.append(
+            _evidence_row(
+                as_of_date=as_of_date,
+                ticker=feature["ticker"],
+                evidence_type="cash_flow_quality",
+                source_table="cash_flow_features",
+                source_id=str(feature.get("source_fundamental_ids") or ""),
+                source_date=feature["date"],
+                available_date=feature["date"],
+                direction=direction,
+                strength=_strength_from_materiality(materiality, [0.20, 0.40, 0.70]),
+                confidence=float(feature.get("confidence") or 0.6),
+                materiality=materiality,
+                summary=_cash_flow_summary(feature, direction),
+                metric_name=feature["feature_name"],
+                metric_value=feature.get("feature_value"),
+                comparison_value=feature.get("feature_score"),
+                interpretation=f"Cash-flow feature score {feature.get('feature_score'):.1f}.",
+                thesis_tag="cash_flow_quality",
+                risk_tag="capex_pressure" if direction == "negative" else None,
+                data_quality_flag=feature.get("data_quality_flag"),
+                created_at=created_at,
+            )
+        )
+    return rows
+
+
+def _factor_evidence(factor_residuals: pd.DataFrame, as_of_date, created_at) -> list[dict]:
+    if factor_residuals.empty:
+        return []
+    rows = []
+    latest = factor_residuals.sort_values("date").groupby("ticker", dropna=False).tail(1)
+    for _, row in latest.iterrows():
+        residual_20d = row.get("residual_return_20d")
+        residual_60d = row.get("residual_return_60d")
+        direction = _factor_direction(residual_20d, residual_60d)
+        materiality = max(
+            abs(float(residual_20d)) if pd.notna(residual_20d) else 0.0,
+            abs(float(residual_60d)) if pd.notna(residual_60d) else 0.0,
+        )
+        confidence = _factor_confidence(row)
+        rows.append(
+            _evidence_row(
+                as_of_date=as_of_date,
+                ticker=row["ticker"],
+                evidence_type="factor_residual",
+                source_table="factor_residuals",
+                source_id=f"{row['ticker']}:{row['date']}:{row['model_name']}:{row['lookback_window']}",
+                source_date=row["date"],
+                available_date=row["date"],
+                direction=direction,
+                strength=_strength_from_materiality(materiality, [0.03, 0.08, 0.20]),
+                confidence=confidence,
+                materiality=materiality,
+                summary=_factor_summary(row, direction),
+                metric_name="residual_return_60d",
+                metric_value=residual_60d,
+                comparison_value=row.get("r2"),
+                interpretation=(
+                    f"20d residual {_fmt_pct(residual_20d)} and 60d residual "
+                    f"{_fmt_pct(residual_60d)} after QQQ/SOXX/10Y attribution."
+                ),
+                thesis_tag="factor_residual",
+                risk_tag="fx_model_gap" if row["ticker"] == "TSM" else None,
+                data_quality_flag=row.get("data_quality_flag"),
+                created_at=created_at,
+            )
+        )
+    return rows
+
+
+def _stance_row(ticker: str, evidence: pd.DataFrame, as_of_date, created_at) -> dict:
+    if evidence.empty:
+        return _empty_stance_row(ticker, as_of_date, created_at)
+
+    scored = _score_evidence_for_ticker(ticker, evidence, as_of_date)
+    positive_score = scored.loc[scored["direction"] == "positive", "weighted_score"].sum()
+    negative_score = -scored.loc[scored["direction"] == "negative", "weighted_score"].sum()
+    net_score = positive_score - negative_score
+    stance = _stance_from_score(net_score)
+    caps, caveats = _confidence_caps(ticker, scored, positive_score, negative_score)
+    stance = _apply_stance_caps(stance, caps)
+    confidence = _stance_confidence(scored, caps)
+
+    positive_ids = _top_evidence_ids(scored, "positive")
+    negative_ids = _top_evidence_ids(scored, "negative")
+    mixed_ids = _top_evidence_ids(scored, "mixed") + _top_evidence_ids(scored, "neutral")
+    risk_flags = _risk_flags(scored)
+    thesis_summary = _thesis_summary(ticker, stance, net_score, scored)
+
+    return {
+        "stance_id": _stable_id("stance", ticker, as_of_date),
+        "as_of_date": as_of_date,
+        "ticker": ticker,
+        "stance": stance,
+        "confidence": round(confidence, 3),
+        "thesis_summary": thesis_summary,
+        "positive_evidence_ids": ",".join(positive_ids),
+        "negative_evidence_ids": ",".join(negative_ids),
+        "mixed_evidence_ids": ",".join(mixed_ids[:5]),
+        "risk_flags": "; ".join(risk_flags),
+        "falsifiers": "; ".join(FALSIFIERS[ticker]),
+        "next_catalysts": "; ".join(NEXT_CATALYSTS[ticker]),
+        "data_quality_caveats": "; ".join(caveats),
+        "created_at": created_at,
+        "ingested_at": created_at,
+    }
+
+
+def _score_evidence_for_ticker(ticker: str, evidence: pd.DataFrame, as_of_date) -> pd.DataFrame:
+    scored = evidence.copy()
+    type_counts = scored["evidence_type"].value_counts().to_dict()
+    weights = EVIDENCE_TYPE_WEIGHTS.get(ticker, {})
+    scored["strength_value"] = scored["strength"].map(STRENGTH_VALUES).fillna(0.25)
+    scored["sign"] = scored["direction"].map({"positive": 1.0, "negative": -1.0}).fillna(0.0)
+    scored["type_weight"] = scored["evidence_type"].map(weights).fillna(0.05)
+    scored["time_decay"] = scored["source_date"].apply(lambda value: _time_decay(value, as_of_date))
+    scored["weighted_score"] = (
+        scored["sign"]
+        * scored["strength_value"]
+        * scored["confidence"].fillna(0.5)
+        * scored["type_weight"]
+        / scored["evidence_type"].map(type_counts).fillna(1.0)
+        * scored["time_decay"]
+        * 100.0
+    )
+    scored["abs_weighted_score"] = scored["weighted_score"].abs()
+    return scored
+
+
+def _confidence_caps(
+    ticker: str,
+    evidence: pd.DataFrame,
+    positive_score: float,
+    negative_score: float,
+) -> tuple[list[str], list[str]]:
+    caps = []
+    caveats = []
+    evidence_types = set(evidence["evidence_type"])
+    if len(evidence) < 4 or len(evidence_types) < 3:
+        caps.append("limited_evidence")
+        caveats.append("limited evidence coverage caps confidence")
+    if "segment_momentum" not in evidence_types:
+        caps.append("missing_segment_evidence")
+        caveats.append("missing segment evidence prevents strong constructive stance")
+    if "cash_flow_quality" not in evidence_types:
+        caps.append("missing_cash_flow_evidence")
+        caveats.append("missing cash-flow evidence caps confidence")
+    if "factor_residual" not in evidence_types:
+        caps.append("missing_factor_evidence")
+        caveats.append("missing factor residual evidence caps confidence")
+    data_issues = evidence[
+        evidence["data_quality_flag"].fillna("complete").isin(
+            ["incomplete", "data_issue", "insufficient_observations"]
+        )
+    ]
+    if len(data_issues) >= 2:
+        caps.append("data_quality_issues")
+        caveats.append("multiple data-quality issues cap confidence")
+    if positive_score >= 15 and negative_score >= 15:
+        caps.append("conflicting_evidence")
+        caveats.append("positive and negative evidence are both material")
+    if ticker == "TSM":
+        caps.append("tsm_fx_model_gap")
+        caveats.append("TSM factor evidence is capped until USD/TWD is added to the model")
+    return caps, caveats
+
+
+def _stance_confidence(evidence: pd.DataFrame, caps: list[str]) -> float:
+    avg_confidence = float(evidence["confidence"].dropna().mean()) if not evidence.empty else 0.35
+    coverage_score = min(1.0, evidence["evidence_type"].nunique() / 4.0)
+    issue_rate = float(
+        evidence["data_quality_flag"].fillna("complete").isin(["incomplete", "data_issue"]).mean()
+    )
+    confidence = avg_confidence * 0.70 + coverage_score * 0.25 + (1.0 - issue_rate) * 0.05
+    cap_values = {
+        "limited_evidence": 0.55,
+        "missing_segment_evidence": 0.65,
+        "missing_cash_flow_evidence": 0.75,
+        "missing_factor_evidence": 0.75,
+        "data_quality_issues": 0.70,
+        "conflicting_evidence": 0.75,
+        "tsm_fx_model_gap": 0.65,
+    }
+    for cap in caps:
+        confidence = min(confidence, cap_values.get(cap, confidence))
+    return _bounded_confidence(confidence)
+
+
+def _stance_from_score(net_score: float) -> str:
+    if net_score >= 25:
+        return "strong_constructive"
+    if net_score >= 10:
+        return "constructive"
+    if net_score > -10:
+        return "neutral"
+    if net_score > -25:
+        return "cautious"
+    return "high_risk"
+
+
+def _apply_stance_caps(stance: str, caps: list[str]) -> str:
+    if "missing_segment_evidence" in caps and stance == "strong_constructive":
+        stance = "constructive"
+    if "limited_evidence" in caps and stance in {"strong_constructive", "constructive"}:
+        stance = "neutral"
+    if "conflicting_evidence" in caps and stance == "strong_constructive":
+        stance = "constructive"
+    return stance
+
+
+def _empty_stance_row(ticker: str, as_of_date, created_at) -> dict:
+    return {
+        "stance_id": _stable_id("stance", ticker, as_of_date),
+        "as_of_date": as_of_date,
+        "ticker": ticker,
+        "stance": "neutral",
+        "confidence": 0.25,
+        "thesis_summary": f"{STATIC_THESIS[ticker]} Evidence coverage is not yet sufficient.",
+        "positive_evidence_ids": "",
+        "negative_evidence_ids": "",
+        "mixed_evidence_ids": "",
+        "risk_flags": "insufficient evidence",
+        "falsifiers": "; ".join(FALSIFIERS[ticker]),
+        "next_catalysts": "; ".join(NEXT_CATALYSTS[ticker]),
+        "data_quality_caveats": "no evidence cards available",
+        "created_at": created_at,
+        "ingested_at": created_at,
+    }
+
+
+def _top_evidence_ids(scored: pd.DataFrame, direction: str, limit: int = 5) -> list[str]:
+    rows = scored[scored["direction"] == direction].sort_values(
+        "abs_weighted_score",
+        ascending=False,
+    )
+    return rows["evidence_id"].head(limit).astype(str).tolist()
+
+
+def _risk_flags(scored: pd.DataFrame) -> list[str]:
+    flags = []
+    negative = scored[scored["direction"] == "negative"].sort_values(
+        "abs_weighted_score",
+        ascending=False,
+    )
+    for _, row in negative.head(4).iterrows():
+        risk_tag = _clean_text(row.get("risk_tag"))
+        summary = _clean_text(row.get("summary"))
+        metric_name = _clean_text(row.get("metric_name"))
+        flags.append(risk_tag or summary or metric_name)
+    if not flags:
+        flags.append("no major negative evidence from current evidence set")
+    return list(dict.fromkeys(flags))
+
+
+def _thesis_summary(ticker: str, stance: str, net_score: float, scored: pd.DataFrame) -> str:
+    top = scored.sort_values("abs_weighted_score", ascending=False).head(2)
+    top_bits = "; ".join(top["summary"].astype(str).tolist())
+    return (
+        f"{STATIC_THESIS[ticker]} Current stance is {stance} with net evidence score "
+        f"{net_score:.1f}. {top_bits}"
+    )
+
+
+def _summary_table(stance: pd.DataFrame) -> list[str]:
+    lines = [
+        "| Ticker | Stance | Confidence | One-line thesis |",
+        "|---|---|---:|---|",
+    ]
+    for _, row in stance.iterrows():
+        lines.append(
+            f"| {row['ticker']} | {row['stance']} | {float(row['confidence']):.2f} | "
+            f"{_short(row['thesis_summary'], 120)} |"
+        )
+    return lines
+
+
+def _cross_stock_read(stance: pd.DataFrame, evidence: pd.DataFrame) -> list[str]:
+    constructive = stance[stance["stance"].isin(["constructive", "strong_constructive"])]
+    cautious = stance[stance["stance"].isin(["cautious", "high_risk"])]
+    factor = (
+        evidence[evidence["evidence_type"] == "factor_residual"]
+        if not evidence.empty
+        else evidence
+    )
+    positive_factor = (
+        factor[factor["direction"] == "positive"]["ticker"].tolist()
+        if not factor.empty
+        else []
+    )
+    negative_factor = (
+        factor[factor["direction"] == "negative"]["ticker"].tolist()
+        if not factor.empty
+        else []
+    )
+    return [
+        "- Constructive evidence currently clusters around: "
+        f"{_list_or_none(constructive['ticker'].tolist())}.",
+        "- Cautious/high-risk evidence currently clusters around: "
+        f"{_list_or_none(cautious['ticker'].tolist())}.",
+        f"- Positive factor residual leadership: {_list_or_none(positive_factor)}.",
+        f"- Negative factor residual pressure: {_list_or_none(negative_factor)}.",
+        "- Stance is research output only; it is not an automatic buy/sell instruction.",
+    ]
+
+
+def _ticker_section(row: pd.Series, evidence_by_id: pd.DataFrame) -> list[str]:
+    ticker = row["ticker"]
+    lines = [
+        "",
+        f"## {ticker}",
+        "",
+        "### Stance",
+        "",
+        f"{row['stance']} (confidence {float(row['confidence']):.2f})",
+        "",
+    ]
+    lines.extend(["### Thesis", "", str(row["thesis_summary"]), ""])
+    for title, column in (
+        ("Positive Evidence", "positive_evidence_ids"),
+        ("Negative / Mixed Evidence", "negative_evidence_ids"),
+        ("Mixed Evidence", "mixed_evidence_ids"),
+    ):
+        lines.extend([f"### {title}", ""])
+        lines.extend(_evidence_bullets(row.get(column), evidence_by_id))
+        lines.append("")
+    lines.extend(["### Risk Flags", "", _value_or_none(row.get("risk_flags")), ""])
+    lines.extend(["### Falsifiers", ""])
+    lines.extend([f"- {item}" for item in str(row["falsifiers"]).split("; ") if item])
+    lines.extend(["", "### Next Catalysts", ""])
+    lines.extend([f"- {item}" for item in str(row["next_catalysts"]).split("; ") if item])
+    lines.extend(
+        ["", "### Data Quality Caveats", "", _value_or_none(row.get("data_quality_caveats")), ""]
+    )
+    return lines
+
+
+def _evidence_bullets(ids_text: object, evidence_by_id: pd.DataFrame) -> list[str]:
+    ids = [item for item in str(ids_text or "").split(",") if item]
+    if not ids:
+        return ["- none"]
+    lines = []
+    for evidence_id in ids[:5]:
+        if evidence_by_id.empty or evidence_id not in evidence_by_id.index:
+            continue
+        row = evidence_by_id.loc[evidence_id]
+        lines.append(
+            f"- {row['summary']} "
+            f"(strength {row['strength']}, confidence {float(row['confidence']):.2f})"
+        )
+    return lines or ["- none"]
+
+
+def _event_return_lookup(event_returns: pd.DataFrame, prefer_factor: bool) -> dict[str, dict]:
+    if event_returns.empty:
+        return {}
+    rows = event_returns[event_returns["return_window"] == "0_p5"].copy()
+    if prefer_factor:
+        rows = rows[rows["benchmark_type"] == "factor_model"]
+    else:
+        rows = rows[rows["benchmark_ticker"].isin(["SOXX", "SMH", "QQQ"])]
+    rows["_source_id"] = rows["event_id"].astype(str) + ":" + rows["affected_ticker"].astype(str)
+    rows["_quality_rank"] = (
+        rows["data_quality_flag"].map({"complete": 0, "mapped_reaction_date": 1}).fillna(2)
+    )
+    return (
+        rows.sort_values(["_source_id", "_quality_rank"])
+        .groupby("_source_id", dropna=False)
+        .head(1)
+        .set_index("_source_id")
+        .to_dict("index")
+    )
+
+
+def _evidence_row(**kwargs) -> dict:
+    row = dict(kwargs)
+    row["evidence_id"] = _stable_id(
+        "evidence",
+        row["ticker"],
+        row["evidence_type"],
+        row["source_table"],
+        row["source_id"],
+        row["metric_name"],
+        row["source_date"],
+    )
+    row["ingested_at"] = row["created_at"]
+    for column in ("source_date", "available_date", "as_of_date"):
+        row[column] = _to_date(row[column])
+    row["confidence"] = _bounded_confidence(row.get("confidence"))
+    return row
+
+
+def _stable_id(*parts: object) -> str:
+    key = "|".join("" if pd.isna(part) else str(part) for part in parts)
+    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:14]
+    return f"{parts[0]}_{digest}"
+
+
+def _to_date(value: object):
+    date_value = pd.to_datetime(value, errors="coerce")
+    if pd.isna(date_value):
+        return None
+    return date_value.date()
+
+
+def _as_of_date(as_of_date: Optional[str], *frames: pd.DataFrame):
+    if as_of_date:
+        return pd.to_datetime(as_of_date).date()
+    dates = []
+    for frame in frames:
+        if frame.empty:
+            continue
+        for column in ("date", "as_of_date", "reaction_date", "source_date"):
+            if column in frame.columns:
+                values = pd.to_datetime(frame[column], errors="coerce").dropna()
+                if not values.empty:
+                    dates.append(values.max())
+    if not dates:
+        return utc_now_naive().date()
+    return max(dates).date()
+
+
+def _direction_from_signed(value: object, threshold: float = 0.0) -> str:
+    if pd.isna(value):
+        return "mixed"
+    numeric = float(value)
+    if numeric > threshold:
+        return "positive"
+    if numeric < -threshold:
+        return "negative"
+    return "neutral"
+
+
+def _direction_from_score(score: object) -> str:
+    if pd.isna(score):
+        return "mixed"
+    numeric = float(score)
+    if numeric >= 70:
+        return "positive"
+    if numeric <= 30:
+        return "negative"
+    return "neutral"
+
+
+def _factor_direction(residual_20d: object, residual_60d: object) -> str:
+    if pd.isna(residual_20d) or pd.isna(residual_60d):
+        return "mixed"
+    if residual_20d > 0.03 and residual_60d > 0.03:
+        return "positive"
+    if residual_20d < -0.03 and residual_60d < -0.03:
+        return "negative"
+    if abs(float(residual_20d)) < 0.03 and abs(float(residual_60d)) < 0.03:
+        return "neutral"
+    return "mixed"
+
+
+def _strength_from_materiality(materiality: float, thresholds: list[float]) -> str:
+    if materiality >= thresholds[2]:
+        return "very_high"
+    if materiality >= thresholds[1]:
+        return "high"
+    if materiality >= thresholds[0]:
+        return "medium"
+    return "low"
+
+
+def _score_materiality(score: object) -> float:
+    if pd.isna(score):
+        return 0.0
+    return abs(float(score) - 50.0) / 50.0
+
+
+def _factor_confidence(row: pd.Series) -> float:
+    confidence = 0.80
+    if row.get("data_quality_flag") == "high_collinearity":
+        confidence -= 0.15
+    if pd.notna(row.get("factor_corr_qqq_soxx")) and abs(float(row["factor_corr_qqq_soxx"])) >= 0.9:
+        confidence -= 0.10
+    if pd.notna(row.get("r2")) and float(row["r2"]) < 0.30:
+        confidence -= 0.15
+    if row["ticker"] == "TSM":
+        confidence = min(confidence, 0.60)
+    return _bounded_confidence(confidence)
+
+
+def _time_decay(source_date: object, as_of_date) -> float:
+    if pd.isna(source_date):
+        return 0.50
+    delta = (pd.to_datetime(as_of_date) - pd.to_datetime(source_date)).days
+    if delta <= 90:
+        return 1.00
+    if delta <= 180:
+        return 0.70
+    if delta <= 365:
+        return 0.40
+    return 0.20
+
+
+def _bounded_confidence(value: object) -> float:
+    if pd.isna(value):
+        return 0.5
+    return max(0.05, min(0.95, float(value)))
+
+
+def _segment_summary(feature: pd.Series, direction: str) -> str:
+    return (
+        f"{feature['ticker']} {feature['feature_name']} is {direction} "
+        f"with score {float(feature['feature_score']):.1f}."
+    )
+
+
+def _cash_flow_summary(feature: pd.Series, direction: str) -> str:
+    return (
+        f"{feature['ticker']} cash-flow feature {feature['feature_name']} is {direction} "
+        f"with value {_fmt_number(feature.get('feature_value'))}."
+    )
+
+
+def _factor_summary(row: pd.Series, direction: str) -> str:
+    caveat = (
+        " Confidence is capped for missing FX/geopolitical factor."
+        if row["ticker"] == "TSM"
+        else ""
+    )
+    return (
+        f"{row['ticker']} factor residual evidence is {direction}: 20d "
+        f"{_fmt_pct(row.get('residual_return_20d'))}, 60d "
+        f"{_fmt_pct(row.get('residual_return_60d'))}.{caveat}"
+    )
+
+
+def _thesis_tag_for_feature(feature_name: str) -> str:
+    if "cloud" in feature_name:
+        return "cloud_operating_leverage"
+    if "data_center" in feature_name:
+        return "ai_compute_demand"
+    if "capex" in feature_name:
+        return "capex_pressure"
+    if "monthly_revenue" in feature_name or "hpc" in feature_name:
+        return "ai_supply_chain_validation"
+    return "company_driver"
+
+
+def _risk_tag_for_feature(feature_name: str, direction: str) -> Optional[str]:
+    if direction != "negative":
+        return None
+    if "capex" in feature_name:
+        return "capex_pressure"
+    if "margin" in feature_name:
+        return "margin_pressure"
+    if "revenue" in feature_name or "growth" in feature_name:
+        return "growth_deceleration"
+    return "negative_driver"
+
+
+def _extract_thesis_tag(thesis_impact: object) -> Optional[str]:
+    if pd.isna(thesis_impact):
+        return None
+    text = str(thesis_impact)
+    marker = "thesis tag "
+    if marker in text:
+        return text.split(marker, 1)[1].strip(". ")
+    return None
+
+
+def _fmt_pct(value: object) -> str:
+    if pd.isna(value):
+        return "n/a"
+    return f"{float(value) * 100:.1f}%"
+
+
+def _fmt_number(value: object) -> str:
+    if pd.isna(value):
+        return "n/a"
+    return f"{float(value):.3f}"
+
+
+def _short(value: object, limit: int) -> str:
+    text = str(value)
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3] + "..."
+
+
+def _list_or_none(values: list[str]) -> str:
+    values = list(dict.fromkeys(values))
+    return ", ".join(values) if values else "none"
+
+
+def _value_or_none(value: object) -> str:
+    if pd.isna(value) or str(value).strip() == "":
+        return "none"
+    return str(value)
+
+
+def _clean_text(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    text = str(value).strip()
+    if text.lower() in {"nan", "none"}:
+        return ""
+    return text

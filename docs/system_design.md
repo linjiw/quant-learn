@@ -97,6 +97,17 @@ CSV Exports
 `factor_residuals`
 : Daily expected return, contribution, and residual-return decomposition, including 5/20/60-day compounded residual returns.
 
+`evidence_cards`
+: Source-linked evidence synthesized from event reactions, segment momentum,
+cash-flow quality, and factor residuals. Each card carries direction, strength,
+confidence, materiality, thesis/risk tags, data-quality flags, and source lineage.
+
+`research_stance`
+: Per-ticker research stance generated from evidence cards. Stance values are
+`strong_constructive`, `constructive`, `neutral`, `cautious`, and `high_risk`.
+Confidence is capped when evidence coverage is thin, segment/cash-flow/factor evidence
+is missing, data-quality issues are material, or TSM factor evidence lacks an FX factor.
+
 `valuation_snapshots`
 : Current valuation multiples from yfinance. Treat these as screening data and verify important values against primary filings or a paid data source.
 
@@ -120,7 +131,13 @@ CSV Exports
 4. Scores are decision support
 : The scorecard ranks research priority and setup quality. It is not a buy/sell command.
 
-5. Single writer
+5. Evidence before stance
+: Research stance is generated from evidence cards, not directly from raw features.
+Every stance includes positive evidence, negative/mixed evidence, falsifiers, next
+catalysts, and data-quality caveats. A high-confidence stance requires enough evidence
+coverage.
+
+6. Single writer
 : DuckDB supports many reads but only one writer at a time. Run ingestion scripts sequentially when writing to the same database file.
 
 ## Implemented CLI
@@ -143,6 +160,7 @@ uv run python -m scripts.build_factor_dashboard
 uv run python -m scripts.build_factor_model
 uv run python -m scripts.build_event_returns --benchmarks QQQ SOXX SMH
 uv run python -m scripts.build_event_reviews
+uv run python -m scripts.build_evidence
 uv run python -m scripts.ingest_valuation
 uv run python -m scripts.build_forward_analysis
 uv run python -m scripts.run_event_study --event-type earnings --window-before 5 --window-after 20
@@ -150,6 +168,9 @@ uv run python -m scripts.run_event_study --event-type earnings --window-before 5
 
 ## Next Implementation Steps
 
-1. Add evidence cards and scorecard evidence IDs after segment, cash-flow, and factor features are reviewed.
-2. Add a single-process pipeline runner to avoid DuckDB writer lock conflicts.
-3. Add an IV monitor table and adapter after choosing an options data source.
+1. Add a single-process pipeline runner to avoid DuckDB writer lock conflicts.
+2. Add valuation evidence cards so the memo can distinguish good companies from
+   attractive setups.
+3. Add a TSM-specific FX model with USD/TWD after validating the current
+   QQQ/SOXX/10Y residual layer.
+4. Add an IV monitor table and adapter after choosing an options data source.

@@ -26,6 +26,8 @@ The first version is deliberately a research system, not an auto-trading system.
 13. PIT-safe `fundamentals_quarterly_normalized` snapshots with cash-flow lineage
 14. `cash_flow_features` for CapEx / OCF and FCF margin evidence
 15. PIT three-factor residual model using `QQQ + SOXX + Δ10Y bps`
+16. `evidence_cards` synthesized from event, segment, cash-flow, and factor layers
+17. `research_stance` and `reports/decision_memo.md` with falsifiers and caveats
 
 For the design rationale and table definitions, see `docs/system_design.md`.
 For the current loophole audit, see `docs/strategy_loopholes.md`.
@@ -143,6 +145,17 @@ uv run python -m scripts.build_event_reviews
 `^TNX`, the system normalizes `^TNX.diff() * 10` into basis points. Rolling exposures
 use prior observations only: the exposure dated `t` is estimated from the window ending
 at `t-1`, then applied to date `t` returns.
+
+Generate evidence cards, research stance, and the decision memo:
+
+```bash
+uv run python -m scripts.build_evidence
+```
+
+`evidence_cards` converts event reviews, segment features, cash-flow features, and
+factor residuals into source-linked evidence rows. `research_stance` turns those rows
+into a research stance with confidence caps, falsifiers, next catalysts, and data-quality
+caveats. The output is a research memo, not a buy/sell instruction.
 
 Generate the visual research report:
 
