@@ -91,16 +91,7 @@ def build_company_segment_kpis(
     initialize_database()
     ticker_list = tickers or ["GOOGL", "NVDA", "AMD"]
     with connect() as conn:
-        fundamentals = conn.execute(
-            """
-            SELECT *
-            FROM fundamentals_quarterly
-            WHERE ticker IN (SELECT unnest(?))
-              AND period_end IS NOT NULL
-            ORDER BY ticker, period_end DESC
-            """,
-            [ticker_list],
-        ).fetchdf()
+        fundamentals = _load_company_fundamentals(conn, ticker_list)
 
     if fundamentals.empty:
         return pd.DataFrame()
@@ -122,18 +113,15 @@ def build_company_segment_kpis(
             "segment_name": "total",
             "unit": None,
             "currency": None,
-            "source_type": "fundamentals_quarterly",
+            "source_type": row.get("source_type", "fundamentals_quarterly"),
             "source_url": None,
             "source_accession_number": row.get("source_accession_number"),
             "filed_date": row.get("source_filed_date"),
             "is_reported": False,
             "is_derived": True,
-            "derivation_method": "fundamentals_quarterly_bridge",
-            "confidence": "medium",
-            "notes": (
-                "Derived from fundamentals_quarterly. Cash-flow fields keep medium "
-                "confidence until V0.9.1 separates YTD and quarterly lineage."
-            ),
+            "derivation_method": row.get("derivation_method", "fundamentals_quarterly_bridge"),
+            "confidence": _company_confidence_label(row.get("confidence")),
+            "notes": row.get("notes", "Derived from normalized point-in-time fundamentals."),
             "ingested_at": ingested_at,
         }
         metrics = {
@@ -168,6 +156,64 @@ def build_company_segment_kpis(
     if not rows:
         return pd.DataFrame(rows)
     return pd.DataFrame(rows).drop_duplicates(subset=["segment_kpi_id"], keep="last")
+
+
+def _load_company_fundamentals(conn, ticker_list: list[str]) -> pd.DataFrame:
+    normalized = conn.execute(
+        """
+        SELECT
+            ticker,
+            fiscal_year,
+            fiscal_quarter,
+            period_end,
+            revenue,
+            gross_profit,
+            gross_margin,
+            operating_income,
+            operating_margin,
+            net_income,
+            eps_diluted AS eps,
+            operating_cash_flow_quarterly AS operating_cash_flow,
+            capex_quarterly AS capex,
+            free_cash_flow_quarterly AS free_cash_flow,
+            cash,
+            debt,
+            shares_outstanding,
+            source_accession_number,
+            filed_date AS source_filed_date,
+            source_url,
+            confidence,
+            data_quality_flag,
+            derivation_method,
+            'fundamentals_quarterly_normalized' AS source_type,
+            'Derived from PIT normalized fundamentals with YTD cash-flow lineage.'
+                AS notes
+        FROM fundamentals_quarterly_normalized
+        WHERE ticker IN (SELECT unnest(?))
+          AND period_end IS NOT NULL
+        ORDER BY ticker, period_end DESC
+        """,
+        [ticker_list],
+    ).fetchdf()
+    if not normalized.empty:
+        return normalized
+
+    return conn.execute(
+        """
+        SELECT
+            *,
+            'fundamentals_quarterly' AS source_type,
+            NULL AS confidence,
+            NULL AS data_quality_flag,
+            'fundamentals_quarterly_bridge' AS derivation_method,
+            'Derived from legacy fundamentals_quarterly.' AS notes
+        FROM fundamentals_quarterly
+        WHERE ticker IN (SELECT unnest(?))
+          AND period_end IS NOT NULL
+        ORDER BY ticker, period_end DESC
+        """,
+        [ticker_list],
+    ).fetchdf()
 
 
 def build_tsmc_monthly_segment_kpis(months: int = 24) -> pd.DataFrame:
@@ -912,6 +958,15 @@ def _confidence(value: object) -> float:
         return float(normalized)
     except ValueError:
         return 0.6
+
+
+def _company_confidence_label(value: object) -> str:
+    confidence = _confidence(value)
+    if confidence >= 0.85:
+        return "high"
+    if confidence >= 0.65:
+        return "medium"
+    return "low"
 
 
 def _source_ids(row: pd.Series) -> str:

@@ -208,6 +208,61 @@ SCHEMA_SQL = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS fundamentals_quarterly_normalized (
+        fundamental_id TEXT NOT NULL,
+        ticker TEXT NOT NULL,
+        fiscal_year INTEGER NOT NULL,
+        fiscal_quarter TEXT NOT NULL,
+        period_start DATE,
+        period_end DATE NOT NULL,
+        available_date DATE,
+        source_accession_number TEXT,
+        source_form TEXT,
+        filed_date DATE,
+        source_url TEXT,
+        revenue DOUBLE,
+        gross_profit DOUBLE,
+        gross_margin DOUBLE,
+        operating_income DOUBLE,
+        operating_margin DOUBLE,
+        net_income DOUBLE,
+        eps_diluted DOUBLE,
+        operating_cash_flow_ytd DOUBLE,
+        capex_ytd DOUBLE,
+        free_cash_flow_ytd DOUBLE,
+        operating_cash_flow_quarterly DOUBLE,
+        capex_quarterly DOUBLE,
+        free_cash_flow_quarterly DOUBLE,
+        cash DOUBLE,
+        debt DOUBLE,
+        shares_outstanding DOUBLE,
+        is_ytd_source BOOLEAN,
+        is_quarterly_derived BOOLEAN,
+        derivation_method TEXT,
+        source_xbrl_tags TEXT,
+        source_fact_keys TEXT,
+        data_quality_flag TEXT,
+        confidence DOUBLE,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (fundamental_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS cash_flow_features (
+        date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        feature_name TEXT NOT NULL,
+        feature_value DOUBLE,
+        feature_score DOUBLE,
+        direction TEXT,
+        source_fundamental_ids TEXT,
+        confidence DOUBLE,
+        data_quality_flag TEXT,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (date, ticker, feature_name)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS signals (
         date DATE NOT NULL,
         ticker TEXT NOT NULL,

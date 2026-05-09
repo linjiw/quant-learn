@@ -14,16 +14,16 @@
 - embedded_margin_score: value=0.387, score=38.717, direction=positive, confidence=0.700
 - embedded_revenue_growth_yoy: value=0.061, score=56.075, direction=positive, confidence=0.700
 - gaming_revenue_growth_yoy: value=0.113, score=61.283, direction=positive, confidence=0.900
-- gross_margin_quality_score: value=0.528, score=52.824, direction=positive, confidence=0.700
-- operating_margin_quality_score: value=0.144, score=14.396, direction=positive, confidence=0.700
+- gross_margin_quality_score: value=0.528, score=52.824, direction=positive, confidence=0.900
+- operating_margin_quality_score: value=0.144, score=14.396, direction=positive, confidence=0.900
 - second_source_thesis_score: value=0.424, score=63.844, direction=positive, confidence=0.700
 
 ## GOOGL
 
-- capex_pressure_score: value=0.779, score=22.092, direction=negative, confidence=0.700
+- capex_pressure_score: value=0.779, score=22.092, direction=negative, confidence=0.900
 - cloud_growth_score: value=0.634, score=100.000, direction=positive, confidence=0.900
 - cloud_margin_score: value=0.329, score=32.944, direction=positive, confidence=0.900
-- fcf_quality_score: value=0.092, score=9.205, direction=positive, confidence=0.700
+- fcf_quality_score: value=0.092, score=9.205, direction=positive, confidence=0.900
 - google_cloud_margin: value=0.329, score=32.944, direction=positive, confidence=0.900
 - google_cloud_revenue_growth_yoy: value=0.634, score=100.000, direction=positive, confidence=0.900
 - google_network_revenue_growth_yoy: value=-0.039, score=46.072, direction=negative, confidence=0.900
@@ -47,9 +47,9 @@
 - data_center_revenue_growth_yoy: value=0.664, score=100.000, direction=positive, confidence=0.900
 - gaming_cycle_score: value=0.301, score=80.070, direction=positive, confidence=0.900
 - gaming_revenue_growth_yoy: value=0.301, score=80.070, direction=positive, confidence=0.900
-- gross_margin_quality_score: value=0.711, score=71.068, direction=positive, confidence=0.700
+- gross_margin_quality_score: value=0.750, score=74.997, direction=positive, confidence=0.700
 - oem_and_other_revenue_growth_yoy: value=0.794, score=100.000, direction=positive, confidence=0.900
-- operating_margin_quality_score: value=0.604, score=60.382, direction=positive, confidence=0.700
+- operating_margin_quality_score: value=0.650, score=65.024, direction=positive, confidence=0.700
 - professional_visualization_growth_score: value=0.564, score=100.000, direction=positive, confidence=0.900
 - professional_visualization_revenue_growth_yoy: value=0.564, score=100.000, direction=positive, confidence=0.900
 

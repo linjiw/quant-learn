@@ -23,7 +23,8 @@ The first version is deliberately a research system, not an auto-trading system.
 10. SEC-derived segment KPI extraction for GOOGL/NVDA/AMD filing tables
 11. Flexible segment KPI layer with `segments_view` and `segment_features`
 12. Event data-quality markdown report
-13. Standardized SEC-derived `fundamentals_quarterly` research snapshots
+13. PIT-safe `fundamentals_quarterly_normalized` snapshots with cash-flow lineage
+14. `cash_flow_features` for CapEx / OCF and FCF margin evidence
 
 For the design rationale and table definitions, see `docs/system_design.md`.
 For the current loophole audit, see `docs/strategy_loopholes.md`.
@@ -107,11 +108,17 @@ segment rows can be extracted from official SEC filing tables with
 as investment evidence. The split files under `data/manual/segment_kpis_*.csv` are the
 versioned, reviewable seed set for the AI compute segment layer.
 
-SEC-derived quarterly fundamentals:
+SEC-derived quarterly fundamentals and cash-flow features:
 
 ```bash
 uv run python -m scripts.build_fundamentals
 ```
+
+This creates both `fundamentals_quarterly_normalized` and the legacy-compatible
+`fundamentals_quarterly` export. Cash-flow fields are stored as YTD and derived
+quarterly values; CapEx is normalized as a positive outflow and FCF is calculated
+as `operating_cash_flow_quarterly - capex_quarterly`. Use `available_date` /
+`filed_date` for point-in-time research.
 
 DuckDB allows many readers but only one writer. Run ingestion scripts sequentially when writing to the same database file.
 
