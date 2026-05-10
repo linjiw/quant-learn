@@ -5,7 +5,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from quant_learn.analytics.auditability import build_freshness_snapshot
+from quant_learn.analytics.auditability import (
+    UPSTREAM_FRESHNESS_TABLES,
+    build_freshness_snapshot,
+)
 from quant_learn.config import CORE_TICKERS
 from quant_learn.db import connect, initialize_database
 from quant_learn.research_views import load_research_views
@@ -72,8 +75,7 @@ def _pipeline_section(pipeline_runs: pd.DataFrame) -> list[str]:
 
 
 def _freshness_section(freshness: list[dict]) -> list[str]:
-    upstream_tables = {"prices", "market_factor_inputs"}
-    rows = [row for row in freshness if row.get("table") in upstream_tables]
+    rows = [row for row in freshness if row.get("table") in UPSTREAM_FRESHNESS_TABLES]
     if not rows:
         return ["- no upstream freshness snapshot available"]
     lines = []

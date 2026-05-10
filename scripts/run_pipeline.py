@@ -3,6 +3,7 @@ import subprocess
 import sys
 
 from quant_learn.analytics.auditability import (
+    UPSTREAM_FRESHNESS_TABLES,
     build_freshness_snapshot,
     generate_run_id,
     record_pipeline_run,
@@ -28,7 +29,7 @@ PIPELINE_STEPS = [
     ("weekly_digest", [["scripts.build_weekly_digest"]]),
 ]
 
-UPSTREAM_FRESHNESS_TABLES = {"prices", "market_factor_inputs"}
+FINAL_RECORD_STEP = "weekly_digest"
 
 
 def main() -> None:
@@ -76,7 +77,11 @@ def main() -> None:
                 ]
                 full_command = [sys.executable, "-m", *resolved_command]
                 print(" ".join(full_command))
-                if step_name == "weekly_digest" and not args.dry_run and not recorded_final:
+                if (
+                    step_name == FINAL_RECORD_STEP
+                    and not args.dry_run
+                    and not recorded_final
+                ):
                     _record_success(run_id, started_at, args, build_freshness_snapshot())
                     recorded_final = True
                 if not args.dry_run:

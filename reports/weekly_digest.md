@@ -2,10 +2,11 @@
 
 ## Latest Pipeline Runs
 
-- pipeline_20260510060953_3df8e3fb: success (evidence -> weekly_digest), snapshot 5bb452b6394f387c
-- pipeline_20260510060911_9fa7dc23: success (evidence -> weekly_digest), snapshot 5bb452b6394f387c
-- v104_validation_20260510020837: success (evidence -> evidence), snapshot 5bb452b6394f387c
-- pipeline_20260510060823_89783932: dry_run (fundamentals -> weekly_digest), snapshot 5bb452b6394f387c
+- pipeline_20260510062147_42f1451e: success (fundamentals -> weekly_digest), snapshot 5bb452b6394f387c
+- pipeline_20260510062050_9fd4f913: success (evidence -> weekly_digest), snapshot 5bb452b6394f387c
+- pipeline_20260510061957_98220e1f: success (evidence -> weekly_digest), snapshot 5bb452b6394f387c
+- pipeline_20260510061957_eb93b7fc: dry_run (fundamentals -> weekly_digest), snapshot 5bb452b6394f387c
+- pipeline_20260510061047_d4bbab07: dry_run (fundamentals -> weekly_digest), snapshot 5bb452b6394f387c
 
 ## Upstream Data Freshness
 

@@ -36,6 +36,7 @@ def test_archive_research_outputs_preserves_prior_stance(tmp_path: Path, monkeyp
         )
 
     auditability.archive_research_outputs("run_fixture")
+    auditability.archive_research_outputs("run_fixture")
 
     with duckdb.connect(str(db_path)) as conn:
         archived = conn.execute(

@@ -234,7 +234,7 @@ def build_evidence_cards(
     if not cards:
         return pd.DataFrame(columns=EVIDENCE_COLUMNS)
     evidence = pd.DataFrame(cards)
-    evidence["run_id"] = run_id or _run_id_from_frames(None, evidence)
+    evidence["run_id"] = _run_id_from_frames(run_id, evidence)
     return evidence[EVIDENCE_COLUMNS].drop_duplicates(subset=["evidence_id"], keep="last")
 
 
@@ -1664,14 +1664,24 @@ def _evidence_row(**kwargs) -> dict:
 def _run_id_from_frames(explicit_run_id: Optional[str], *frames: pd.DataFrame) -> str:
     if explicit_run_id:
         return explicit_run_id
+    frame_run_ids = []
     for frame in frames:
         if frame.empty or "run_id" not in frame.columns:
             continue
         values = frame["run_id"].dropna().astype(str)
         values = values[values.str.len() > 0]
-        if not values.empty:
-            return values.iloc[-1]
-    return _stable_id("run", utc_now_naive())
+        frame_run_ids.extend(values.unique().tolist())
+    unique_run_ids = list(dict.fromkeys(frame_run_ids))
+    if len(unique_run_ids) == 1:
+        return unique_run_ids[0]
+    if len(unique_run_ids) > 1:
+        raise ValueError(
+            "run_id is ambiguous: input frames carry multiple run_id values; "
+            "pass run_id explicitly"
+        )
+    raise ValueError(
+        "run_id required: no explicit run_id was passed and no input frame carries run_id"
+    )
 
 
 def _stable_id(*parts: object) -> str:

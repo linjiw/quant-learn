@@ -18,7 +18,7 @@ def test_evidence_cards_have_source_lineage_and_core_types(
     _patch_evidence_db(monkeypatch, db_path)
     _seed_full_evidence_fixture(db_path)
 
-    cards = evidence.build_evidence_cards(as_of_date="2026-02-10")
+    cards = evidence.build_evidence_cards(as_of_date="2026-02-10", run_id="fixture_run")
 
     assert {"GOOGL", "NVDA", "AMD", "TSM"}.issubset(set(cards["ticker"]))
     assert {
@@ -30,6 +30,56 @@ def test_evidence_cards_have_source_lineage_and_core_types(
     assert cards["source_table"].notna().all()
     assert cards["source_id"].astype(str).str.len().gt(0).all()
     assert cards["evidence_id"].is_unique
+    assert set(cards["run_id"]) == {"fixture_run"}
+
+
+def test_evidence_cards_require_explicit_run_id_for_new_cards(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "missing_run_id.duckdb"
+    _patch_evidence_db(monkeypatch, db_path)
+    _seed_full_evidence_fixture(db_path)
+
+    with pytest.raises(ValueError, match="run_id required"):
+        evidence.build_evidence_cards(as_of_date="2026-02-10")
+
+
+def test_run_id_propagates_to_stance_and_memo(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "run_trace.duckdb"
+    _patch_evidence_db(monkeypatch, db_path)
+    _seed_full_evidence_fixture(db_path)
+
+    cards = evidence.build_evidence_cards(as_of_date="2026-02-10", run_id="trace_run")
+    evidence.store_evidence_cards(cards)
+    stance = evidence.build_research_stance(as_of_date="2026-02-10")
+    evidence.store_research_stance(stance)
+    output_path = tmp_path / "decision_memo.md"
+
+    evidence.build_decision_memo(output_path)
+    memo = output_path.read_text(encoding="utf-8")
+
+    assert set(stance["run_id"]) == {"trace_run"}
+    assert "run_id: trace_run" in memo
+
+
+def test_research_stance_rejects_ambiguous_run_id(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "ambiguous_run_id.duckdb"
+    _patch_evidence_db(monkeypatch, db_path)
+    cards = _direct_conflicted_constructive_evidence()
+    cards.loc[cards.index[:2], "run_id"] = "run_a"
+    cards.loc[cards.index[2:], "run_id"] = "run_b"
+
+    evidence.store_evidence_cards(cards)
+
+    with pytest.raises(ValueError, match="ambiguous"):
+        evidence.build_research_stance(as_of_date="2026-02-10")
 
 
 def test_research_stance_requires_minimum_evidence(
@@ -40,7 +90,7 @@ def test_research_stance_requires_minimum_evidence(
     _patch_evidence_db(monkeypatch, db_path)
     _seed_factor_only_fixture(db_path)
 
-    cards = evidence.build_evidence_cards(as_of_date="2026-02-10")
+    cards = evidence.build_evidence_cards(as_of_date="2026-02-10", run_id="fixture_run")
     evidence.store_evidence_cards(cards)
     stance = evidence.build_research_stance(as_of_date="2026-02-10")
     amd = stance[stance["ticker"] == "AMD"].iloc[0]
@@ -76,7 +126,7 @@ def test_decision_memo_contains_all_four_tickers_and_falsifiers(
     _patch_evidence_db(monkeypatch, db_path)
     _seed_full_evidence_fixture(db_path)
 
-    cards = evidence.build_evidence_cards(as_of_date="2026-02-10")
+    cards = evidence.build_evidence_cards(as_of_date="2026-02-10", run_id="fixture_run")
     evidence.store_evidence_cards(cards)
     stance = evidence.build_research_stance(as_of_date="2026-02-10")
     evidence.store_research_stance(stance)
@@ -102,7 +152,7 @@ def test_stance_components_sum_to_net_score(tmp_path: Path, monkeypatch) -> None
     _patch_evidence_db(monkeypatch, db_path)
     _seed_full_evidence_fixture(db_path)
 
-    cards = evidence.build_evidence_cards(as_of_date="2026-02-10")
+    cards = evidence.build_evidence_cards(as_of_date="2026-02-10", run_id="fixture_run")
     evidence.store_evidence_cards(cards)
     stance = evidence.build_research_stance(as_of_date="2026-02-10")
     evidence.store_research_stance(stance)
@@ -129,7 +179,7 @@ def test_confidence_caps_are_recorded_when_applied(tmp_path: Path, monkeypatch) 
     _patch_evidence_db(monkeypatch, db_path)
     _seed_factor_only_fixture(db_path)
 
-    cards = evidence.build_evidence_cards(as_of_date="2026-02-10")
+    cards = evidence.build_evidence_cards(as_of_date="2026-02-10", run_id="fixture_run")
     evidence.store_evidence_cards(cards)
     evidence.store_research_stance(evidence.build_research_stance(as_of_date="2026-02-10"))
     _, caps, _ = evidence.build_stance_audit_tables(as_of_date="2026-02-10")
@@ -150,7 +200,7 @@ def test_tsm_constructive_confidence_capped_by_fx_gap(
     _patch_evidence_db(monkeypatch, db_path)
     _seed_full_evidence_fixture(db_path)
 
-    cards = evidence.build_evidence_cards(as_of_date="2026-02-10")
+    cards = evidence.build_evidence_cards(as_of_date="2026-02-10", run_id="fixture_run")
     evidence.store_evidence_cards(cards)
     stance = evidence.build_research_stance(as_of_date="2026-02-10")
     evidence.store_research_stance(stance)
@@ -212,7 +262,7 @@ def test_decision_memo_summary_includes_modifiers_and_caveats(
     _patch_evidence_db(monkeypatch, db_path)
     _seed_full_evidence_fixture(db_path)
 
-    cards = evidence.build_evidence_cards(as_of_date="2026-02-10")
+    cards = evidence.build_evidence_cards(as_of_date="2026-02-10", run_id="fixture_run")
     evidence.store_evidence_cards(cards)
     stance = evidence.build_research_stance(as_of_date="2026-02-10")
     evidence.store_research_stance(stance)
@@ -230,7 +280,7 @@ def test_stance_audit_report_contains_all_four_tickers(tmp_path: Path, monkeypat
     _patch_evidence_db(monkeypatch, db_path)
     _seed_full_evidence_fixture(db_path)
 
-    cards = evidence.build_evidence_cards(as_of_date="2026-02-10")
+    cards = evidence.build_evidence_cards(as_of_date="2026-02-10", run_id="fixture_run")
     evidence.store_evidence_cards(cards)
     stance = evidence.build_research_stance(as_of_date="2026-02-10")
     evidence.store_research_stance(stance)

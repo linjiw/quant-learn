@@ -85,7 +85,7 @@ def test_valuation_evidence_generated_for_all_four_tickers(
 
     valuation.store_valuation_metrics(valuation.build_valuation_metrics(CORE_TICKERS))
     valuation.store_valuation_features(valuation.build_valuation_features(CORE_TICKERS))
-    cards = evidence.build_evidence_cards(as_of_date="2026-04-15")
+    cards = evidence.build_evidence_cards(as_of_date="2026-04-15", run_id="fixture_run")
     valuation_cards = cards[cards["evidence_type"] == "valuation"]
 
     assert set(valuation_cards["ticker"]) == set(CORE_TICKERS)

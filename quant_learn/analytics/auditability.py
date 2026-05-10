@@ -23,6 +23,8 @@ FRESHNESS_TABLES = [
     "research_stance",
 ]
 
+UPSTREAM_FRESHNESS_TABLES = {"prices", "market_factor_inputs"}
+
 HISTORY_TABLES = {
     "evidence_cards": "evidence_cards_history",
     "research_stance": "research_stance_history",
@@ -54,7 +56,11 @@ def build_freshness_snapshot(tables: Iterable[str] = FRESHNESS_TABLES) -> list[d
 
 
 def data_snapshot_hash(freshness_snapshot: list[dict]) -> str:
-    """Hash a freshness snapshot for memo/run traceability."""
+    """Hash table-level freshness metadata for memo/run traceability.
+
+    The hash reflects table row counts and max dates, not row-level content.
+    In-place edits that do not change those table-level fields are not detected.
+    """
 
     stable_snapshot = [
         {
