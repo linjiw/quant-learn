@@ -2,11 +2,10 @@
 
 ## Latest Pipeline Runs
 
+- pipeline_20260510063016_e630246c: success (fundamentals -> weekly_digest), snapshot 5bb452b6394f387c
 - pipeline_20260510062147_42f1451e: success (fundamentals -> weekly_digest), snapshot 5bb452b6394f387c
-- pipeline_20260510062050_9fd4f913: success (evidence -> weekly_digest), snapshot 5bb452b6394f387c
-- pipeline_20260510061957_98220e1f: success (evidence -> weekly_digest), snapshot 5bb452b6394f387c
-- pipeline_20260510061957_eb93b7fc: dry_run (fundamentals -> weekly_digest), snapshot 5bb452b6394f387c
-- pipeline_20260510061047_d4bbab07: dry_run (fundamentals -> weekly_digest), snapshot 5bb452b6394f387c
+- pipeline_20260510062050_9fd4f913: success (evidence -> weekly_digest), snapshot 5bb452b6394f387c, force-stale
+- pipeline_20260510061957_98220e1f: success (evidence -> weekly_digest), snapshot 5bb452b6394f387c, force-stale
 
 ## Upstream Data Freshness
 
@@ -17,10 +16,10 @@
 
 | Ticker | Stance | Modifier | Confidence | Caveat |
 |---|---|---|---:|---|
-| AMD | constructive | valuation_capped+mixed | 0.70 | multiple data-quality issues cap confidence |
-| GOOGL | neutral | mixed_cash_flow+mixed | 0.70 | positive and negative evidence are both material |
-| NVDA | constructive | valuation_capped+factor_conflicted+mixed | 0.70 | multiple data-quality issues cap confidence |
-| TSM | neutral | data_quality_capped+mixed | 0.65 | missing cash-flow evidence caps confidence |
+| AMD | constructive | valuation_capped | 0.70 | multiple data-quality issues cap confidence |
+| GOOGL | neutral | mixed_cash_flow | 0.70 | positive and negative evidence are both material |
+| NVDA | constructive | valuation_capped+factor_conflicted | 0.70 | multiple data-quality issues cap confidence |
+| TSM | neutral | data_quality_capped | 0.65 | missing cash-flow evidence caps confidence |
 
 ## High-Severity Conflicts
 

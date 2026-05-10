@@ -66,6 +66,46 @@ def test_run_id_propagates_to_stance_and_memo(
     assert "run_id: trace_run" in memo
 
 
+def test_store_research_outputs_rolls_back_on_write_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "atomic_store.duckdb"
+    _patch_evidence_db(monkeypatch, db_path)
+    old_cards = _direct_conflicted_constructive_evidence()
+    old_cards["run_id"] = "old_run"
+    evidence.store_evidence_cards(old_cards)
+
+    new_cards = old_cards.copy()
+    new_cards["run_id"] = "new_run"
+    new_stance = evidence.build_research_stance(
+        as_of_date="2026-02-10",
+        run_id="new_run",
+        evidence_cards=new_cards,
+    )
+    components, caps, conflicts = evidence.build_stance_audit_tables(
+        as_of_date="2026-02-10",
+        run_id="new_run",
+        evidence_cards=new_cards,
+        research_stance=new_stance,
+    )
+    invalid_conflicts = conflicts.assign(extra_column="force insert failure")
+
+    with pytest.raises(duckdb.Error):
+        evidence.store_research_outputs(
+            new_cards,
+            new_stance,
+            components,
+            caps,
+            invalid_conflicts,
+        )
+
+    with duckdb.connect(str(db_path)) as conn:
+        current = conn.execute("SELECT DISTINCT run_id FROM evidence_cards").fetchdf()
+
+    assert current["run_id"].tolist() == ["old_run"]
+
+
 def test_research_stance_rejects_ambiguous_run_id(
     tmp_path: Path,
     monkeypatch,

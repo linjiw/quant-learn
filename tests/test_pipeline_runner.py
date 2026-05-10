@@ -1,5 +1,8 @@
 import sys
 
+import pandas as pd
+
+from quant_learn.analytics.weekly_digest import _pipeline_section
 from scripts import run_pipeline
 
 
@@ -117,3 +120,23 @@ def test_stale_partial_pipeline_blocks_without_force(monkeypatch) -> None:
     assert run_rows[0]["run_id"] == "pipeline_fixture"
     assert run_rows[0]["status"] == "failed"
     assert "stale upstream data" in run_rows[0]["error_message"]
+
+
+def test_weekly_digest_pipeline_section_marks_force_stale_runs() -> None:
+    rows = pd.DataFrame(
+        [
+            {
+                "run_id": "pipeline_fixture",
+                "status": "success",
+                "from_step": "evidence",
+                "to_step": "weekly_digest",
+                "data_snapshot_hash": "snapshot_fixture",
+                "force_stale": True,
+            }
+        ]
+    )
+
+    section = "\n".join(_pipeline_section(rows))
+
+    assert "pipeline_fixture" in section
+    assert "force-stale" in section

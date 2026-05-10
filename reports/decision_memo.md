@@ -1,17 +1,17 @@
 # AI Compute Four-Stock Decision Memo
 
 as_of_date: 2026-05-09
-run_id: pipeline_20260510062147_42f1451e
+run_id: pipeline_20260510063016_e630246c
 data_snapshot_hash: 5bb452b6394f387c
 
 ## Executive Summary
 
 | Ticker | Stance | Modifier | Confidence | Main caveat | One-line thesis |
 |---|---|---|---:|---|---|
-| AMD | constructive | valuation_capped+mixed | 0.70 | valuation evidence caps upside | AMD upside depends on becoming a credible second supplier in AI accelerators while sustaining EPYC/Data Center moment... |
-| GOOGL | neutral | mixed_cash_flow+mixed | 0.70 | cash-flow evidence is mixed | GOOGL remains a high-quality AI/Cloud compounder if Search resilience and Cloud margin expansion can offset AI CapEx ... |
-| NVDA | constructive | valuation_capped+factor_conflicted+mixed | 0.70 | valuation evidence caps upside | NVDA retains AI compute platform leadership if Data Center growth, gross margin, and supply visibility remain strong.... |
-| TSM | neutral | data_quality_capped+mixed | 0.65 | missing cash-flow evidence caps confidence | TSM remains the manufacturing bottleneck of AI compute if monthly revenue momentum, HPC mix, advanced node mix, and m... |
+| AMD | constructive | valuation_capped | 0.70 | valuation evidence caps upside | AMD upside depends on becoming a credible second supplier in AI accelerators while sustaining EPYC/Data Center moment... |
+| GOOGL | neutral | mixed_cash_flow | 0.70 | cash-flow evidence is mixed | GOOGL remains a high-quality AI/Cloud compounder if Search resilience and Cloud margin expansion can offset AI CapEx ... |
+| NVDA | constructive | valuation_capped+factor_conflicted | 0.70 | valuation evidence caps upside | NVDA retains AI compute platform leadership if Data Center growth, gross margin, and supply visibility remain strong.... |
+| TSM | neutral | data_quality_capped | 0.65 | missing cash-flow evidence caps confidence | TSM remains the manufacturing bottleneck of AI compute if monthly revenue momentum, HPC mix, advanced node mix, and m... |
 
 ## Cross-Stock Read
 
@@ -25,7 +25,7 @@ data_snapshot_hash: 5bb452b6394f387c
 
 ### Stance
 
-neutral / mixed_cash_flow+mixed (confidence 0.70)
+neutral / mixed_cash_flow (confidence 0.70)
 
 ### Thesis
 
@@ -79,7 +79,7 @@ positive and negative evidence are both material; negative valuation evidence ca
 
 ### Stance
 
-constructive / valuation_capped+factor_conflicted+mixed (confidence 0.70)
+constructive / valuation_capped+factor_conflicted (confidence 0.70)
 
 ### Thesis
 
@@ -90,8 +90,8 @@ NVDA retains AI compute platform leadership if Data Center growth, gross margin,
 - NVDA valuation feature growth_adjusted_valuation_score is positive with score 100.0. (strength very_high, confidence 0.75)
 - NVDA cash-flow feature capex_to_ocf is positive with value 0.035. (strength very_high, confidence 0.80)
 - NVDA oem_and_other_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
-- NVDA data_center_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
 - NVDA professional_visualization_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
+- NVDA data_center_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
 
 ### Negative / Mixed Evidence
 
@@ -136,7 +136,7 @@ multiple data-quality issues cap confidence; positive and negative evidence are 
 
 ### Stance
 
-constructive / valuation_capped+mixed (confidence 0.70)
+constructive / valuation_capped (confidence 0.70)
 
 ### Thesis
 
@@ -154,8 +154,8 @@ AMD upside depends on becoming a credible second supplier in AI accelerators whi
 
 - AMD valuation feature valuation_percentile_score is negative with score 0.0. (strength very_high, confidence 0.75)
 - AMD operating_margin_quality_score is negative with score 14.4. (strength very_high, confidence 0.90)
-- AMD client_and_gaming_margin is negative with score 16.0. (strength high, confidence 0.70)
 - AMD data_center_margin is negative with score 27.7. (strength high, confidence 0.70)
+- AMD client_and_gaming_margin is negative with score 16.0. (strength high, confidence 0.70)
 - AMD data_center_margin_score is negative with score 27.7. (strength high, confidence 0.70)
 
 ### Mixed Evidence
@@ -193,7 +193,7 @@ multiple data-quality issues cap confidence; positive and negative evidence are 
 
 ### Stance
 
-neutral / data_quality_capped+mixed (confidence 0.65)
+neutral / data_quality_capped (confidence 0.65)
 
 ### Thesis
 

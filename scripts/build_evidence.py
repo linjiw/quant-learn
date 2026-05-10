@@ -14,9 +14,7 @@ from quant_learn.analytics.evidence import (
     build_research_stance,
     build_stance_audit_report,
     build_stance_audit_tables,
-    store_evidence_cards,
-    store_research_stance,
-    store_stance_audit_tables,
+    store_research_outputs,
 )
 from quant_learn.config import EXPORT_DIR, ensure_directories
 from quant_learn.time import utc_now_naive
@@ -38,24 +36,35 @@ def main() -> None:
     try:
         archive_research_outputs(run_id)
         evidence_cards = build_evidence_cards(as_of_date=args.as_of_date, run_id=run_id)
-        evidence_count = store_evidence_cards(evidence_cards)
         evidence_export = EXPORT_DIR / "evidence_cards.csv"
-        evidence_cards.to_csv(evidence_export, index=False)
-
-        research_stance = build_research_stance(as_of_date=args.as_of_date, run_id=run_id)
-        stance_count = store_research_stance(research_stance)
+        research_stance = build_research_stance(
+            as_of_date=args.as_of_date,
+            run_id=run_id,
+            evidence_cards=evidence_cards,
+        )
         stance_export = EXPORT_DIR / "research_stance.csv"
-        research_stance.to_csv(stance_export, index=False)
 
         components, caps, conflicts = build_stance_audit_tables(
             as_of_date=args.as_of_date,
             run_id=run_id,
+            evidence_cards=evidence_cards,
+            research_stance=research_stance,
         )
-        component_count, cap_count, conflict_count = store_stance_audit_tables(
+        (
+            evidence_count,
+            stance_count,
+            component_count,
+            cap_count,
+            conflict_count,
+        ) = store_research_outputs(
+            evidence_cards,
+            research_stance,
             components,
             caps,
             conflicts,
         )
+        evidence_cards.to_csv(evidence_export, index=False)
+        research_stance.to_csv(stance_export, index=False)
         components.to_csv(EXPORT_DIR / "stance_components.csv", index=False)
         caps.to_csv(EXPORT_DIR / "stance_confidence_caps.csv", index=False)
         conflicts.to_csv(EXPORT_DIR / "stance_conflicts.csv", index=False)

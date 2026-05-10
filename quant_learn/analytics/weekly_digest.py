@@ -70,6 +70,7 @@ def _pipeline_section(pipeline_runs: pd.DataFrame) -> list[str]:
             f"- {row['run_id']}: {row['status']} "
             f"({row.get('from_step')} -> {row.get('to_step')}), "
             f"snapshot {row.get('data_snapshot_hash')}"
+            f"{', force-stale' if bool(row.get('force_stale')) else ''}"
         )
     return lines
 

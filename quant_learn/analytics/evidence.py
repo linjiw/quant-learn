@@ -234,7 +234,9 @@ def build_evidence_cards(
     if not cards:
         return pd.DataFrame(columns=EVIDENCE_COLUMNS)
     evidence = pd.DataFrame(cards)
-    evidence["run_id"] = _run_id_from_frames(run_id, evidence)
+    if not run_id:
+        raise ValueError("run_id required: build_evidence_cards requires explicit run_id")
+    evidence["run_id"] = run_id
     return evidence[EVIDENCE_COLUMNS].drop_duplicates(subset=["evidence_id"], keep="last")
 
 
@@ -252,12 +254,16 @@ def store_evidence_cards(evidence_cards: pd.DataFrame) -> int:
 def build_research_stance(
     as_of_date: Optional[str] = None,
     run_id: Optional[str] = None,
+    evidence_cards: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """Build research stance rows from stored evidence cards."""
 
     initialize_database()
-    with connect() as conn:
-        evidence = conn.execute("SELECT * FROM evidence_cards").fetchdf()
+    if evidence_cards is None:
+        with connect() as conn:
+            evidence = conn.execute("SELECT * FROM evidence_cards").fetchdf()
+    else:
+        evidence = evidence_cards.copy()
 
     if evidence.empty:
         return pd.DataFrame(columns=STANCE_COLUMNS)
@@ -289,13 +295,27 @@ def store_research_stance(research_stance: pd.DataFrame) -> int:
 def build_stance_audit_tables(
     as_of_date: Optional[str] = None,
     run_id: Optional[str] = None,
+    evidence_cards: Optional[pd.DataFrame] = None,
+    research_stance: Optional[pd.DataFrame] = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Build stance component, confidence-cap, and conflict audit tables."""
 
     initialize_database()
-    with connect() as conn:
-        evidence = conn.execute("SELECT * FROM evidence_cards").fetchdf()
-        stance = conn.execute("SELECT * FROM research_stance").fetchdf()
+    if evidence_cards is None or research_stance is None:
+        with connect() as conn:
+            evidence = (
+                conn.execute("SELECT * FROM evidence_cards").fetchdf()
+                if evidence_cards is None
+                else evidence_cards.copy()
+            )
+            stance = (
+                conn.execute("SELECT * FROM research_stance").fetchdf()
+                if research_stance is None
+                else research_stance.copy()
+            )
+    else:
+        evidence = evidence_cards.copy()
+        stance = research_stance.copy()
 
     if evidence.empty:
         return (
@@ -388,6 +408,71 @@ def store_stance_audit_tables(
                 ["as_of_date", "ticker", "conflict_type"],
             )
     return component_count, cap_count, conflict_count
+
+
+def store_research_outputs(
+    evidence_cards: pd.DataFrame,
+    research_stance: pd.DataFrame,
+    components: pd.DataFrame,
+    caps: pd.DataFrame,
+    conflicts: pd.DataFrame,
+) -> tuple[int, int, int, int, int]:
+    """Store all research outputs in one transaction after all builds succeed."""
+
+    initialize_database()
+    with connect() as conn:
+        conn.execute("BEGIN TRANSACTION")
+        try:
+            conn.execute("DELETE FROM evidence_cards")
+            conn.execute("DELETE FROM research_stance")
+            conn.execute("DELETE FROM stance_components")
+            conn.execute("DELETE FROM stance_confidence_caps")
+            conn.execute("DELETE FROM stance_conflicts")
+            evidence_count = (
+                upsert_dataframe(conn, evidence_cards, "evidence_cards", ["evidence_id"])
+                if not evidence_cards.empty
+                else 0
+            )
+            stance_count = (
+                upsert_dataframe(conn, research_stance, "research_stance", ["stance_id"])
+                if not research_stance.empty
+                else 0
+            )
+            component_count = (
+                upsert_dataframe(
+                    conn,
+                    components,
+                    "stance_components",
+                    ["as_of_date", "ticker", "evidence_type", "direction"],
+                )
+                if not components.empty
+                else 0
+            )
+            cap_count = (
+                upsert_dataframe(
+                    conn,
+                    caps,
+                    "stance_confidence_caps",
+                    ["as_of_date", "ticker", "cap_type"],
+                )
+                if not caps.empty
+                else 0
+            )
+            conflict_count = (
+                upsert_dataframe(
+                    conn,
+                    conflicts,
+                    "stance_conflicts",
+                    ["as_of_date", "ticker", "conflict_type"],
+                )
+                if not conflicts.empty
+                else 0
+            )
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+        conn.execute("COMMIT")
+    return evidence_count, stance_count, component_count, cap_count, conflict_count
 
 
 def build_decision_memo(
@@ -1038,7 +1123,7 @@ def _stance_modifier(
         modifiers.append("valuation_unknown")
     if has_positive_cash and has_negative_cash:
         modifiers.append("mixed_cash_flow")
-    if "conflicting_evidence" in caps:
+    if "conflicting_evidence" in caps and not modifiers:
         modifiers.append("mixed")
     if caps and not modifiers:
         modifiers.append("capped")

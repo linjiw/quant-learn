@@ -7,7 +7,7 @@ This report audits how `research_stance` was produced. It is designed to find ov
 ## GOOGL
 
 - Stance: neutral
-- Modifier: mixed_cash_flow+mixed
+- Modifier: mixed_cash_flow
 - Confidence: 0.70
 - Net weighted score: -6.8
 
@@ -76,7 +76,7 @@ GOOGL remains a high-quality AI/Cloud compounder if Search resilience and Cloud 
 ## NVDA
 
 - Stance: constructive
-- Modifier: valuation_capped+factor_conflicted+mixed
+- Modifier: valuation_capped+factor_conflicted
 - Confidence: 0.70
 - Net weighted score: 13.0
 
@@ -126,8 +126,8 @@ GOOGL remains a high-quality AI/Cloud compounder if Search resilience and Cloud 
 - NVDA valuation feature growth_adjusted_valuation_score is positive with score 100.0. (strength very_high, confidence 0.75)
 - NVDA cash-flow feature capex_to_ocf is positive with value 0.035. (strength very_high, confidence 0.80)
 - NVDA oem_and_other_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
-- NVDA data_center_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
 - NVDA professional_visualization_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
+- NVDA data_center_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
 
 ### Top Negative Evidence
 
@@ -143,7 +143,7 @@ NVDA retains AI compute platform leadership if Data Center growth, gross margin,
 ## AMD
 
 - Stance: constructive
-- Modifier: valuation_capped+mixed
+- Modifier: valuation_capped
 - Confidence: 0.70
 - Net weighted score: 10.5
 
@@ -202,8 +202,8 @@ NVDA retains AI compute platform leadership if Data Center growth, gross margin,
 
 - AMD valuation feature valuation_percentile_score is negative with score 0.0. (strength very_high, confidence 0.75)
 - AMD operating_margin_quality_score is negative with score 14.4. (strength very_high, confidence 0.90)
-- AMD client_and_gaming_margin is negative with score 16.0. (strength high, confidence 0.70)
 - AMD data_center_margin is negative with score 27.7. (strength high, confidence 0.70)
+- AMD client_and_gaming_margin is negative with score 16.0. (strength high, confidence 0.70)
 - AMD data_center_margin_score is negative with score 27.7. (strength high, confidence 0.70)
 
 ### Final Stance Explanation
@@ -213,7 +213,7 @@ AMD upside depends on becoming a credible second supplier in AI accelerators whi
 ## TSM
 
 - Stance: neutral
-- Modifier: data_quality_capped+mixed
+- Modifier: data_quality_capped
 - Confidence: 0.65
 - Net weighted score: 3.0
 
