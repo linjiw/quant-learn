@@ -70,6 +70,7 @@ def test_pipeline_run_id_is_passed_to_evidence_and_recorded_before_digest(
     assert run_rows[0]["to_step"] == "weekly_digest"
     assert calls == [
         ("subprocess", "scripts.build_evidence"),
+        ("subprocess", "scripts.build_stance_backtest"),
         ("record", "pipeline_fixture", "success"),
         ("subprocess", "scripts.build_weekly_digest"),
     ]

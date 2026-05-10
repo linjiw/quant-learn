@@ -755,6 +755,59 @@ SCHEMA_SQL = [
         PRIMARY KEY (as_of_date, ticker, model_name, lookback_window, window_days)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS stance_backtest_observations (
+        run_id TEXT NOT NULL,
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        stance TEXT NOT NULL,
+        stance_modifier TEXT,
+        confidence DOUBLE,
+        confidence_bucket TEXT,
+        data_snapshot_hash TEXT,
+        horizon INTEGER NOT NULL,
+        entry_date DATE,
+        maturity_date DATE,
+        is_mature BOOLEAN,
+        forward_raw_return DOUBLE,
+        forward_factor_expected_return DOUBLE,
+        forward_residual_return DOUBLE,
+        forward_max_drawdown DOUBLE,
+        data_quality_flag TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (run_id, ticker, horizon)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS stance_backtest_summary (
+        as_of_date DATE NOT NULL,
+        horizon INTEGER NOT NULL,
+        ticker TEXT NOT NULL,
+        stance TEXT NOT NULL,
+        stance_modifier TEXT NOT NULL,
+        confidence_bucket TEXT NOT NULL,
+        observation_count INTEGER,
+        mature_count INTEGER,
+        hit_rate DOUBLE,
+        mean_forward_residual_return DOUBLE,
+        median_forward_residual_return DOUBLE,
+        p25_forward_residual_return DOUBLE,
+        p75_forward_residual_return DOUBLE,
+        mean_forward_raw_return DOUBLE,
+        mean_forward_max_drawdown DOUBLE,
+        created_at TIMESTAMP NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (
+            as_of_date,
+            horizon,
+            ticker,
+            stance,
+            stance_modifier,
+            confidence_bucket
+        )
+    )
+    """,
 ]
 
 MIGRATION_SQL = [

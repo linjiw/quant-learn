@@ -26,6 +26,7 @@ PIPELINE_STEPS = [
     ),
     ("valuation", [["scripts.build_valuation"]]),
     ("evidence", [["scripts.build_evidence", "--run-id", "{run_id}"]]),
+    ("stance_backtest", [["scripts.build_stance_backtest"]]),
     ("weekly_digest", [["scripts.build_weekly_digest"]]),
 ]
 

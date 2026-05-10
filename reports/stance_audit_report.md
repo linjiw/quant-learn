@@ -125,9 +125,9 @@ GOOGL remains a high-quality AI/Cloud compounder if Search resilience and Cloud 
 
 - NVDA valuation feature growth_adjusted_valuation_score is positive with score 100.0. (strength very_high, confidence 0.75)
 - NVDA cash-flow feature capex_to_ocf is positive with value 0.035. (strength very_high, confidence 0.80)
+- NVDA oem_and_other_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
 - NVDA data_center_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
 - NVDA professional_visualization_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
-- NVDA oem_and_other_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
 
 ### Top Negative Evidence
 

@@ -1,7 +1,7 @@
 # AI Compute Four-Stock Decision Memo
 
 as_of_date: 2026-05-09
-run_id: pipeline_20260510063955_3da8d93e
+run_id: pipeline_20260510065904_9f986d26
 data_snapshot_hash: 5bb452b6394f387c
 
 ## Executive Summary
@@ -89,9 +89,9 @@ NVDA retains AI compute platform leadership if Data Center growth, gross margin,
 
 - NVDA valuation feature growth_adjusted_valuation_score is positive with score 100.0. (strength very_high, confidence 0.75)
 - NVDA cash-flow feature capex_to_ocf is positive with value 0.035. (strength very_high, confidence 0.80)
+- NVDA oem_and_other_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
 - NVDA data_center_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
 - NVDA professional_visualization_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
-- NVDA oem_and_other_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
 
 ### Negative / Mixed Evidence
 

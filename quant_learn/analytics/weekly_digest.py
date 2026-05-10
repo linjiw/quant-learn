@@ -40,6 +40,13 @@ def build_weekly_digest(output_path: Path) -> Path:
         pipeline_runs = conn.execute(
             "SELECT * FROM pipeline_runs ORDER BY started_at DESC LIMIT 5"
         ).fetchdf()
+        backtest_summary = conn.execute(
+            """
+            SELECT *
+            FROM stance_backtest_summary
+            ORDER BY horizon, ticker, stance, stance_modifier, confidence_bucket
+            """
+        ).fetchdf()
 
     lines = ["# Weekly AI Compute Research Digest", ""]
     lines.extend(_pipeline_section(pipeline_runs))
@@ -53,6 +60,8 @@ def build_weekly_digest(output_path: Path) -> Path:
     lines.extend(_cap_bullets(caps))
     lines.extend(["", "## Residual Concentration Warnings", ""])
     lines.extend(_residual_bullets(diagnostics))
+    lines.extend(["", "## Stance Backtest Hit Rate", ""])
+    lines.extend(_backtest_bullets(backtest_summary))
     lines.extend(["", "## Missing Human Thesis Warnings", ""])
     lines.extend(_human_thesis_warnings(stance))
 
@@ -146,6 +155,25 @@ def _residual_bullets(diagnostics: pd.DataFrame) -> list[str]:
     ]
 
 
+def _backtest_bullets(summary: pd.DataFrame) -> list[str]:
+    if summary.empty:
+        return ["- no stance backtest summary available"]
+    mature = summary[summary["mature_count"].fillna(0) > 0]
+    if mature.empty:
+        return ["- no mature stance outcome observations yet"]
+    latest_horizon = min(mature["horizon"].astype(int))
+    horizon_rows = mature[mature["horizon"].astype(int) == latest_horizon]
+    lines = []
+    for _, row in horizon_rows.iterrows():
+        lines.append(
+            f"- {row['ticker']} {int(row['horizon'])}d {row['stance']} "
+            f"({row['confidence_bucket']}): hit_rate={_fmt_pct(row['hit_rate'])}, "
+            f"mean_residual={_fmt_pct(row['mean_forward_residual_return'])}, "
+            f"n={int(row['mature_count'])}"
+        )
+    return lines
+
+
 def _human_thesis_warnings(stance: pd.DataFrame) -> list[str]:
     views = load_research_views()
     warnings = []
@@ -176,3 +204,9 @@ def _human_thesis_warnings(stance: pd.DataFrame) -> list[str]:
     if missing:
         warnings.extend(f"- missing stance/research view for {ticker}" for ticker in missing)
     return warnings or ["- none"]
+
+
+def _fmt_pct(value) -> str:
+    if pd.isna(value):
+        return "n/a"
+    return f"{float(value) * 100:.1f}%"
