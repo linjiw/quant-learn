@@ -22,13 +22,14 @@ def test_stance_backtest_observation_calculates_forward_residual(
     assert len(observations) == 1
     row = observations.iloc[0]
     expected_return = (1.03 * 1.02) - 1
+    residual_return = (1.07 * 1.08) - 1
     assert row["data_quality_flag"] == "complete"
     assert bool(row["is_mature"]) is True
     assert row["entry_date"] == pd.Timestamp("2026-01-02").date()
     assert row["maturity_date"] == pd.Timestamp("2026-01-06").date()
     assert row["forward_raw_return"] == pytest.approx(0.21)
     assert row["forward_factor_expected_return"] == pytest.approx(expected_return)
-    assert row["forward_residual_return"] == pytest.approx(0.21 - expected_return)
+    assert row["forward_residual_return"] == pytest.approx(residual_return)
     assert row["forward_max_drawdown"] == pytest.approx(0.0)
 
 
@@ -170,14 +171,15 @@ def _price_row(date: str, ticker: str, price: float, now) -> dict:
 
 
 def _residual_row(date: str, ticker: str, expected_return: float, now) -> dict:
+    actual_return = 0.10
     return {
         "date": pd.Timestamp(date).date(),
         "ticker": ticker,
         "model_name": "three_factor_raw",
         "lookback_window": 60,
-        "stock_return_1d": None,
+        "stock_return_1d": actual_return,
         "expected_return_1d": expected_return,
-        "residual_return_1d": None,
+        "residual_return_1d": actual_return - expected_return,
         "market_contribution_1d": None,
         "sector_contribution_1d": None,
         "rate_contribution_1d": None,

@@ -79,7 +79,7 @@ def build_stance_backtest_observations(
         ).fetchdf()
         residuals = conn.execute(
             """
-            SELECT date, ticker, expected_return_1d
+            SELECT date, ticker, expected_return_1d, residual_return_1d
             FROM factor_residuals
             WHERE model_name = ? AND lookback_window = ?
             ORDER BY ticker, date
@@ -227,6 +227,7 @@ def build_stance_backtest_report(output_path: Path) -> Path:
         "",
         "Scope: archive-based outcome tracking for stance rows the system actually emitted.",
         "This is not a trading PnL simulation and does not replay historical evidence.",
+        "Forward residual return compounds daily factor residuals from factor_residuals.",
         "",
         "## Coverage",
         "",
@@ -377,7 +378,7 @@ def _observation_row(
     window_prices = prices.iloc[entry_pos : target_pos + 1]["price"].astype(float)
     raw_return = float(maturity_price) / float(entry_price) - 1
     max_drawdown = _max_drawdown(window_prices)
-    expected_return = _forward_expected_return(
+    factor_returns = _forward_factor_returns(
         residuals=residuals,
         entry_date=prices.loc[entry_pos, "date"],
         maturity_date=maturity_date,
@@ -385,30 +386,34 @@ def _observation_row(
     )
     base["forward_raw_return"] = raw_return
     base["forward_max_drawdown"] = max_drawdown
-    if expected_return is None:
+    if factor_returns is None:
         base["data_quality_flag"] = "missing_factor_residuals"
         return base
+    expected_return, residual_return = factor_returns
     base["forward_factor_expected_return"] = expected_return
-    base["forward_residual_return"] = raw_return - expected_return
+    base["forward_residual_return"] = residual_return
     base["data_quality_flag"] = "complete"
     return base
 
 
-def _forward_expected_return(
+def _forward_factor_returns(
     *,
     residuals: Optional[pd.DataFrame],
     entry_date,
     maturity_date,
     horizon: int,
-) -> Optional[float]:
+) -> Optional[tuple[float, float]]:
     if residuals is None or residuals.empty:
         return None
     window = residuals[
         (residuals["date"] > entry_date) & (residuals["date"] <= maturity_date)
     ]
-    if len(window) < horizon or window["expected_return_1d"].isna().any():
+    required_columns = ["expected_return_1d", "residual_return_1d"]
+    if len(window) < horizon or window[required_columns].isna().any().any():
         return None
-    return float((1 + window["expected_return_1d"].astype(float)).prod() - 1)
+    expected_return = float((1 + window["expected_return_1d"].astype(float)).prod() - 1)
+    residual_return = float((1 + window["residual_return_1d"].astype(float)).prod() - 1)
+    return expected_return, residual_return
 
 
 def _max_drawdown(prices: pd.Series) -> Optional[float]:
