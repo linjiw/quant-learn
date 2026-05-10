@@ -295,6 +295,7 @@ SCHEMA_SQL = [
         as_of_date DATE NOT NULL,
         ticker TEXT NOT NULL,
         stance TEXT NOT NULL,
+        stance_modifier TEXT,
         confidence DOUBLE,
         thesis_summary TEXT,
         positive_evidence_ids TEXT,
@@ -590,6 +591,7 @@ MIGRATION_SQL = [
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS data_quality_score DOUBLE",
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS model_confidence DOUBLE",
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS confidence_cap_reason TEXT",
+    "ALTER TABLE research_stance ADD COLUMN IF NOT EXISTS stance_modifier TEXT",
 ]
 
 

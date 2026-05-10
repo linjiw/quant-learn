@@ -4,12 +4,12 @@ as_of_date: 2026-05-08
 
 ## Executive Summary
 
-| Ticker | Stance | Confidence | One-line thesis |
-|---|---|---:|---|
-| AMD | strong_constructive | 0.70 | AMD upside depends on becoming a credible second supplier in AI accelerators while sustaining EPYC/Data Center moment... |
-| GOOGL | neutral | 0.75 | GOOGL remains a high-quality AI/Cloud compounder if Search resilience and Cloud margin expansion can offset AI CapEx ... |
-| NVDA | constructive | 0.70 | NVDA retains AI compute platform leadership if Data Center growth, gross margin, and supply visibility remain strong.... |
-| TSM | constructive | 0.65 | TSM remains the manufacturing bottleneck of AI compute if monthly revenue momentum, HPC mix, advanced node mix, and m... |
+| Ticker | Stance | Modifier | Confidence | Main caveat | One-line thesis |
+|---|---|---|---:|---|---|
+| AMD | strong_constructive | factor_led | 0.70 | needs non-factor confirmation | AMD upside depends on becoming a credible second supplier in AI accelerators while sustaining EPYC/Data Center moment... |
+| GOOGL | neutral | mixed_cash_flow | 0.75 | cash-flow evidence is mixed | GOOGL remains a high-quality AI/Cloud compounder if Search resilience and Cloud margin expansion can offset AI CapEx ... |
+| NVDA | constructive | factor_conflicted | 0.70 | negative factor-residual conflict | NVDA retains AI compute platform leadership if Data Center growth, gross margin, and supply visibility remain strong.... |
+| TSM | constructive | data_quality_capped | 0.65 | missing cash-flow evidence caps confidence | TSM remains the manufacturing bottleneck of AI compute if monthly revenue momentum, HPC mix, advanced node mix, and m... |
 
 ## Cross-Stock Read
 
@@ -23,7 +23,7 @@ as_of_date: 2026-05-08
 
 ### Stance
 
-neutral (confidence 0.75)
+neutral / mixed_cash_flow (confidence 0.75)
 
 ### Thesis
 
@@ -77,7 +77,7 @@ positive and negative evidence are both material
 
 ### Stance
 
-constructive (confidence 0.70)
+constructive / factor_conflicted (confidence 0.70)
 
 ### Thesis
 
@@ -133,7 +133,7 @@ multiple data-quality issues cap confidence
 
 ### Stance
 
-strong_constructive (confidence 0.70)
+strong_constructive / factor_led (confidence 0.70)
 
 ### Thesis
 
@@ -190,7 +190,7 @@ multiple data-quality issues cap confidence
 
 ### Stance
 
-constructive (confidence 0.65)
+constructive / data_quality_capped (confidence 0.65)
 
 ### Thesis
 

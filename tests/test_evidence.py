@@ -168,8 +168,52 @@ def test_positive_stance_with_negative_factor_residual_sets_conflict_flag(
     nvda = stance[stance["ticker"] == "NVDA"].iloc[0]
 
     assert nvda["stance"] in {"constructive", "strong_constructive"}
+    assert nvda["stance_modifier"] == "factor_conflicted"
     assert "positive_stance_negative_factor_residual" in set(conflicts["conflict_type"])
     assert "positive_segment_negative_factor" in set(conflicts["conflict_type"])
+
+
+def test_factor_dominated_positive_stance_capped_below_strong_constructive(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "factor_dominated_cap.duckdb"
+    _patch_evidence_db(monkeypatch, db_path)
+    cards = _direct_factor_dominated_evidence()
+
+    evidence.store_evidence_cards(cards)
+    stance = evidence.build_research_stance(as_of_date="2026-02-10")
+    evidence.store_research_stance(stance)
+    _, caps, conflicts = evidence.build_stance_audit_tables(as_of_date="2026-02-10")
+    amd = stance[stance["ticker"] == "AMD"].iloc[0]
+    amd_caps = set(caps[caps["ticker"] == "AMD"]["cap_type"])
+
+    assert amd["stance"] == "constructive"
+    assert amd["stance_modifier"] == "factor_led"
+    assert "factor_dominated_positive_evidence" in amd_caps
+    assert "insufficient_non_factor_positive_confirmation" in amd_caps
+    assert "factor_dominated_positive_stance" in set(conflicts["conflict_type"])
+
+
+def test_decision_memo_summary_includes_modifiers_and_caveats(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "memo_modifiers.duckdb"
+    _patch_evidence_db(monkeypatch, db_path)
+    _seed_full_evidence_fixture(db_path)
+
+    cards = evidence.build_evidence_cards(as_of_date="2026-02-10")
+    evidence.store_evidence_cards(cards)
+    stance = evidence.build_research_stance(as_of_date="2026-02-10")
+    evidence.store_research_stance(stance)
+    output_path = tmp_path / "decision_memo.md"
+
+    evidence.build_decision_memo(output_path)
+    memo = output_path.read_text(encoding="utf-8")
+
+    assert "| Ticker | Stance | Modifier | Confidence | Main caveat | One-line thesis |" in memo
+    assert "/ factor_conflicted" in memo or "/ data_quality_capped" in memo
 
 
 def test_stance_audit_report_contains_all_four_tickers(tmp_path: Path, monkeypatch) -> None:
@@ -473,6 +517,58 @@ def _direct_conflicted_constructive_evidence() -> pd.DataFrame:
             "NVDA factor residual evidence is negative.",
             "residual_return_60d",
             risk_tag="factor_residual_pressure",
+        ),
+    ]
+    frame = pd.DataFrame(rows)
+    frame["created_at"] = created_at
+    frame["ingested_at"] = created_at
+    return frame[evidence.EVIDENCE_COLUMNS]
+
+
+def _direct_factor_dominated_evidence() -> pd.DataFrame:
+    created_at = utc_now_naive()
+    rows = [
+        _evidence_fixture_row(
+            "amd_factor_positive",
+            "AMD",
+            "factor_residual",
+            "positive",
+            "very_high",
+            0.95,
+            "AMD factor residual evidence is very positive.",
+            "residual_return_60d",
+        ),
+        _evidence_fixture_row(
+            "amd_event_positive",
+            "AMD",
+            "event_reaction",
+            "positive",
+            "very_high",
+            0.95,
+            "AMD event evidence is positive.",
+            "factor_model_abnormal_0_p5",
+        ),
+        _evidence_fixture_row(
+            "amd_cash_negative",
+            "AMD",
+            "cash_flow_quality",
+            "negative",
+            "low",
+            0.60,
+            "AMD cash-flow evidence is weak.",
+            "fcf_margin",
+            risk_tag="cash_flow_pressure",
+        ),
+        _evidence_fixture_row(
+            "amd_cash_negative_2",
+            "AMD",
+            "cash_flow_quality",
+            "negative",
+            "low",
+            0.60,
+            "AMD second cash-flow evidence is weak.",
+            "capex_to_ocf",
+            risk_tag="cash_flow_pressure",
         ),
     ]
     frame = pd.DataFrame(rows)

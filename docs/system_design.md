@@ -105,8 +105,10 @@ confidence, materiality, thesis/risk tags, data-quality flags, and source lineag
 `research_stance`
 : Per-ticker research stance generated from evidence cards. Stance values are
 `strong_constructive`, `constructive`, `neutral`, `cautious`, and `high_risk`.
-Confidence is capped when evidence coverage is thin, segment/cash-flow/factor evidence
-is missing, data-quality issues are material, or TSM factor evidence lacks an FX factor.
+Each row also carries a `stance_modifier` such as `factor_led`, `factor_conflicted`,
+`mixed_cash_flow`, or `data_quality_capped`. Confidence is capped when evidence coverage
+is thin, segment/cash-flow/factor evidence is missing, data-quality issues are material,
+or TSM factor evidence lacks an FX factor.
 
 `stance_components`
 : Audit table that decomposes each stance by evidence type and direction. It records
@@ -156,7 +158,12 @@ coverage.
 `stance_conflicts` before adding new model layers. This prevents a plausible memo from
 hiding evidence imbalance or factor/operating-driver conflicts.
 
-7. Single writer
+7. Strong stance needs non-factor confirmation
+: `strong_constructive` is capped when positive evidence is factor-dominated and lacks
+at least two non-factor positive evidence categories. Factor-led upside can still be
+shown through `stance_modifier = factor_led`, but the memo must make the caveat visible.
+
+8. Single writer
 : DuckDB supports many reads but only one writer at a time. Run ingestion scripts sequentially when writing to the same database file.
 
 ## Implemented CLI

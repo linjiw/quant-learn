@@ -62,13 +62,13 @@ system thinks the evidence is. Do not treat one evidence card as a decision.
 
 `research_stance`
 : The per-ticker synthesis layer. It combines event, segment, cash-flow, and factor
-evidence with ticker-specific weights and confidence caps. Stance is a research view,
-not a trading command.
+evidence with ticker-specific weights, confidence caps, and stance modifiers. Stance is
+a research view, not a trading command.
 
 `reports/decision_memo.md`
 : The weekly decision memo. Read the executive table first, then check each ticker's
-positive evidence, negative/mixed evidence, risk flags, falsifiers, next catalysts, and
-data-quality caveats.
+stance modifier, main caveat, positive evidence, negative/mixed evidence, risk flags,
+falsifiers, next catalysts, and data-quality caveats.
 
 `reports/stance_audit_report.md`
 : The calibration report for the memo. It shows evidence counts, weighted score
@@ -89,3 +89,4 @@ accepting a stance as reasonable.
 10. Use `evidence_cards` to audit what the system is using as proof.
 11. Use `research_stance` and `reports/decision_memo.md` only after checking the caveats and falsifiers.
 12. Use `reports/stance_audit_report.md` to verify that a stance is not dominated by one evidence type or hiding a material conflict.
+13. Treat `factor_led` as upside that needs non-factor confirmation and `factor_conflicted` as a positive stance that is not momentum-confirmed.

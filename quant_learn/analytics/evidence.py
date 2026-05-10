@@ -40,6 +40,7 @@ STANCE_COLUMNS = [
     "as_of_date",
     "ticker",
     "stance",
+    "stance_modifier",
     "confidence",
     "thesis_summary",
     "positive_evidence_ids",
@@ -198,6 +199,9 @@ NEXT_CATALYSTS = {
 
 STRENGTH_VALUES = {"low": 0.25, "medium": 0.50, "high": 0.75, "very_high": 1.00}
 STANCE_ORDER = ["high_risk", "cautious", "neutral", "constructive", "strong_constructive"]
+FACTOR_DOMINANCE_THRESHOLD = 0.55
+FACTOR_LED_MODIFIER_THRESHOLD = 0.50
+MIN_NON_FACTOR_POSITIVE_TYPES_FOR_STRONG = 2
 
 CONFIDENCE_CAP_VALUES = {
     "limited_evidence": 0.55,
@@ -208,6 +212,8 @@ CONFIDENCE_CAP_VALUES = {
     "conflicting_evidence": 0.75,
     "tsm_fx_model_gap": 0.65,
     "missing_non_factor_positive_evidence": 0.70,
+    "factor_dominated_positive_evidence": 0.70,
+    "insufficient_non_factor_positive_confirmation": 0.70,
 }
 
 CONFIDENCE_CAP_REASONS = {
@@ -220,6 +226,12 @@ CONFIDENCE_CAP_REASONS = {
     "tsm_fx_model_gap": "TSM factor evidence is capped until USD/TWD is added to the model",
     "missing_non_factor_positive_evidence": (
         "strong constructive stance requires positive non-factor evidence"
+    ),
+    "factor_dominated_positive_evidence": (
+        "positive evidence is factor-led and lacks enough non-factor confirmation"
+    ),
+    "insufficient_non_factor_positive_confirmation": (
+        "strong constructive stance requires at least two non-factor positive evidence types"
     ),
 }
 
@@ -710,6 +722,7 @@ def _stance_row(ticker: str, evidence: pd.DataFrame, as_of_date, created_at) -> 
     stance = _stance_from_score(net_score)
     caps, caveats = _confidence_caps(ticker, scored, positive_score, negative_score)
     stance = _apply_stance_caps(stance, caps)
+    stance_modifier = _stance_modifier(ticker, stance, scored, caps)
     confidence = _stance_confidence(scored, caps)
 
     positive_ids = _top_evidence_ids(scored, "positive")
@@ -723,6 +736,7 @@ def _stance_row(ticker: str, evidence: pd.DataFrame, as_of_date, created_at) -> 
         "as_of_date": as_of_date,
         "ticker": ticker,
         "stance": stance,
+        "stance_modifier": stance_modifier,
         "confidence": round(confidence, 3),
         "thesis_summary": thesis_summary,
         "positive_evidence_ids": ",".join(positive_ids),
@@ -795,9 +809,25 @@ def _confidence_caps(
         & (evidence["evidence_type"] != "factor_residual")
     ]
     positive_factor_score = _positive_factor_score(evidence)
+    positive_factor_share = _positive_factor_share(evidence, positive_score)
+    non_factor_positive_types = _non_factor_positive_type_count(evidence)
     if positive_factor_score >= 15 and non_factor_positive.empty:
         caps.append("missing_non_factor_positive_evidence")
         caveats.append("strong constructive stance requires positive non-factor evidence")
+    if (
+        positive_score >= 25
+        and non_factor_positive_types < MIN_NON_FACTOR_POSITIVE_TYPES_FOR_STRONG
+    ):
+        caps.append("insufficient_non_factor_positive_confirmation")
+        caveats.append(
+            "strong constructive stance requires at least two non-factor positive evidence types"
+        )
+    if (
+        positive_factor_share >= FACTOR_DOMINANCE_THRESHOLD
+        and non_factor_positive_types < MIN_NON_FACTOR_POSITIVE_TYPES_FOR_STRONG
+    ):
+        caps.append("factor_dominated_positive_evidence")
+        caveats.append("factor-led positive evidence needs non-factor confirmation")
     if ticker == "TSM":
         caps.append("tsm_fx_model_gap")
         caveats.append("TSM factor evidence is capped until USD/TWD is added to the model")
@@ -833,11 +863,52 @@ def _apply_stance_caps(stance: str, caps: list[str]) -> str:
         stance = "constructive"
     if "missing_non_factor_positive_evidence" in caps and stance == "strong_constructive":
         stance = "constructive"
+    if (
+        "insufficient_non_factor_positive_confirmation" in caps
+        and stance == "strong_constructive"
+    ):
+        stance = "constructive"
+    if "factor_dominated_positive_evidence" in caps and stance == "strong_constructive":
+        stance = "constructive"
     if "limited_evidence" in caps and stance in {"strong_constructive", "constructive"}:
         stance = "neutral"
     if "conflicting_evidence" in caps and stance == "strong_constructive":
         stance = "constructive"
     return stance
+
+
+def _stance_modifier(
+    ticker: str,
+    stance: str,
+    scored: pd.DataFrame,
+    caps: list[str],
+) -> str:
+    positive_stance = stance in {"constructive", "strong_constructive"}
+    negative_factor = _material_evidence(scored, "factor_residual", "negative")
+    positive_factor_share = _positive_factor_share(
+        scored,
+        scored.loc[scored["direction"] == "positive", "weighted_score"].sum(),
+    )
+    has_positive_cash = not _material_evidence(scored, "cash_flow_quality", "positive").empty
+    has_negative_cash = not _material_evidence(scored, "cash_flow_quality", "negative").empty
+
+    if positive_stance and positive_factor_share >= FACTOR_LED_MODIFIER_THRESHOLD:
+        return "factor_led"
+    if ticker == "TSM" and (
+        "tsm_fx_model_gap" in caps
+        or "missing_cash_flow_evidence" in caps
+        or "data_quality_issues" in caps
+    ):
+        return "data_quality_capped"
+    if positive_stance and not negative_factor.empty:
+        return "factor_conflicted"
+    if has_positive_cash and has_negative_cash:
+        return "mixed_cash_flow"
+    if "conflicting_evidence" in caps:
+        return "mixed"
+    if caps:
+        return "capped"
+    return "clean"
 
 
 def _empty_stance_row(ticker: str, as_of_date, created_at) -> dict:
@@ -846,6 +917,7 @@ def _empty_stance_row(ticker: str, as_of_date, created_at) -> dict:
         "as_of_date": as_of_date,
         "ticker": ticker,
         "stance": "neutral",
+        "stance_modifier": "insufficient_evidence",
         "confidence": 0.25,
         "thesis_summary": f"{STATIC_THESIS[ticker]} Evidence coverage is not yet sufficient.",
         "positive_evidence_ids": "",
@@ -1135,6 +1207,20 @@ def _positive_factor_score(scored: pd.DataFrame) -> float:
     return float(rows["weighted_score"].sum()) if not rows.empty else 0.0
 
 
+def _positive_factor_share(scored: pd.DataFrame, positive_score: float) -> float:
+    if positive_score <= 0:
+        return 0.0
+    return max(0.0, _positive_factor_score(scored) / float(positive_score))
+
+
+def _non_factor_positive_type_count(scored: pd.DataFrame) -> int:
+    rows = scored[
+        (scored["direction"] == "positive")
+        & (scored["evidence_type"] != "factor_residual")
+    ]
+    return int(rows["evidence_type"].nunique())
+
+
 def _thesis_summary(ticker: str, stance: str, net_score: float, scored: pd.DataFrame) -> str:
     top = scored.sort_values("abs_weighted_score", ascending=False).head(2)
     top_bits = "; ".join(top["summary"].astype(str).tolist())
@@ -1146,12 +1232,13 @@ def _thesis_summary(ticker: str, stance: str, net_score: float, scored: pd.DataF
 
 def _summary_table(stance: pd.DataFrame) -> list[str]:
     lines = [
-        "| Ticker | Stance | Confidence | One-line thesis |",
-        "|---|---|---:|---|",
+        "| Ticker | Stance | Modifier | Confidence | Main caveat | One-line thesis |",
+        "|---|---|---|---:|---|---|",
     ]
     for _, row in stance.iterrows():
         lines.append(
-            f"| {row['ticker']} | {row['stance']} | {float(row['confidence']):.2f} | "
+            f"| {row['ticker']} | {row['stance']} | {row.get('stance_modifier', 'n/a')} | "
+            f"{float(row['confidence']):.2f} | {_main_caveat(row)} | "
             f"{_short(row['thesis_summary'], 120)} |"
         )
     return lines
@@ -1194,7 +1281,10 @@ def _ticker_section(row: pd.Series, evidence_by_id: pd.DataFrame) -> list[str]:
         "",
         "### Stance",
         "",
-        f"{row['stance']} (confidence {float(row['confidence']):.2f})",
+        (
+            f"{row['stance']} / {row.get('stance_modifier', 'n/a')} "
+            f"(confidence {float(row['confidence']):.2f})"
+        ),
         "",
     ]
     lines.extend(["### Thesis", "", str(row["thesis_summary"]), ""])
@@ -1231,6 +1321,7 @@ def _audit_ticker_section(
         f"## {ticker}",
         "",
         f"- Stance: {row['stance']}",
+        f"- Modifier: {row.get('stance_modifier', 'n/a')}",
         f"- Confidence: {float(row['confidence']):.2f}",
         f"- Net weighted score: {net_score:.1f}",
         "",
@@ -1559,6 +1650,29 @@ def _short(value: object, limit: int) -> str:
 def _list_or_none(values: list[str]) -> str:
     values = list(dict.fromkeys(values))
     return ", ".join(values) if values else "none"
+
+
+def _main_caveat(row: pd.Series) -> str:
+    modifier = _clean_text(row.get("stance_modifier"))
+    caveats = _clean_text(row.get("data_quality_caveats"))
+    risk_flags = _clean_text(row.get("risk_flags"))
+    modifier_caveats = {
+        "factor_led": "needs non-factor confirmation",
+        "factor_conflicted": "negative factor-residual conflict",
+        "mixed_cash_flow": "cash-flow evidence is mixed",
+        "data_quality_capped": caveats.split("; ", 1)[0] if caveats else "data-quality capped",
+        "capped": caveats.split("; ", 1)[0] if caveats else "confidence capped",
+        "mixed": caveats.split("; ", 1)[0] if caveats else "mixed evidence",
+    }
+    if modifier in modifier_caveats:
+        return _short(modifier_caveats[modifier], 80)
+    if caveats:
+        return _short(caveats.split("; ", 1)[0], 80)
+    if modifier and modifier != "clean":
+        return modifier
+    if risk_flags:
+        return _short(risk_flags.split("; ", 1)[0], 80)
+    return "none"
 
 
 def _value_or_none(value: object) -> str:

@@ -7,6 +7,7 @@ This report audits how `research_stance` was produced. It is designed to find ov
 ## GOOGL
 
 - Stance: neutral
+- Modifier: mixed_cash_flow
 - Confidence: 0.75
 - Net weighted score: 9.6
 
@@ -71,6 +72,7 @@ GOOGL remains a high-quality AI/Cloud compounder if Search resilience and Cloud 
 ## NVDA
 
 - Stance: constructive
+- Modifier: factor_conflicted
 - Confidence: 0.70
 - Net weighted score: 11.7
 
@@ -128,6 +130,7 @@ NVDA retains AI compute platform leadership if Data Center growth, gross margin,
 ## AMD
 
 - Stance: strong_constructive
+- Modifier: factor_led
 - Confidence: 0.70
 - Net weighted score: 29.8
 
@@ -192,6 +195,7 @@ AMD upside depends on becoming a credible second supplier in AI accelerators whi
 ## TSM
 
 - Stance: constructive
+- Modifier: data_quality_capped
 - Confidence: 0.65
 - Net weighted score: 10.1
 
