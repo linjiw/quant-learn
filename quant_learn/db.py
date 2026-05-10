@@ -354,6 +354,123 @@ SCHEMA_SQL = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS evidence_cards_history (
+        run_id TEXT NOT NULL,
+        archived_at TIMESTAMP NOT NULL,
+        evidence_id TEXT NOT NULL,
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        evidence_type TEXT NOT NULL,
+        source_table TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        source_date DATE,
+        available_date DATE,
+        direction TEXT NOT NULL,
+        strength TEXT NOT NULL,
+        confidence DOUBLE,
+        materiality DOUBLE,
+        summary TEXT,
+        metric_name TEXT,
+        metric_value DOUBLE,
+        comparison_value DOUBLE,
+        interpretation TEXT,
+        thesis_tag TEXT,
+        risk_tag TEXT,
+        data_quality_flag TEXT,
+        created_at TIMESTAMP NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (run_id, evidence_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS research_stance_history (
+        run_id TEXT NOT NULL,
+        archived_at TIMESTAMP NOT NULL,
+        stance_id TEXT NOT NULL,
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        stance TEXT NOT NULL,
+        stance_modifier TEXT,
+        confidence DOUBLE,
+        thesis_summary TEXT,
+        positive_evidence_ids TEXT,
+        negative_evidence_ids TEXT,
+        mixed_evidence_ids TEXT,
+        risk_flags TEXT,
+        falsifiers TEXT,
+        next_catalysts TEXT,
+        data_quality_caveats TEXT,
+        created_at TIMESTAMP NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (run_id, stance_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS stance_components_history (
+        run_id TEXT NOT NULL,
+        archived_at TIMESTAMP NOT NULL,
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        evidence_type TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        weighted_score DOUBLE,
+        raw_strength DOUBLE,
+        avg_confidence DOUBLE,
+        evidence_count INTEGER,
+        top_evidence_ids TEXT,
+        created_at TIMESTAMP NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (run_id, as_of_date, ticker, evidence_type, direction)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS stance_confidence_caps_history (
+        run_id TEXT NOT NULL,
+        archived_at TIMESTAMP NOT NULL,
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        cap_type TEXT NOT NULL,
+        cap_value DOUBLE,
+        reason TEXT,
+        applied BOOLEAN,
+        created_at TIMESTAMP NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (run_id, as_of_date, ticker, cap_type)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS stance_conflicts_history (
+        run_id TEXT NOT NULL,
+        archived_at TIMESTAMP NOT NULL,
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        conflict_type TEXT NOT NULL,
+        positive_evidence_ids TEXT,
+        negative_evidence_ids TEXT,
+        severity TEXT,
+        summary TEXT,
+        created_at TIMESTAMP NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (run_id, as_of_date, ticker, conflict_type)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS pipeline_runs (
+        run_id TEXT NOT NULL,
+        started_at TIMESTAMP NOT NULL,
+        completed_at TIMESTAMP,
+        mode TEXT,
+        from_step TEXT,
+        to_step TEXT,
+        force_stale BOOLEAN,
+        status TEXT NOT NULL,
+        data_snapshot_hash TEXT,
+        freshness_snapshot_json TEXT,
+        error_message TEXT,
+        PRIMARY KEY (run_id)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS signals (
         date DATE NOT NULL,
         ticker TEXT NOT NULL,
@@ -611,6 +728,26 @@ SCHEMA_SQL = [
         data_quality_flag TEXT,
         ingested_at TIMESTAMP NOT NULL,
         PRIMARY KEY (date, ticker, model_name, lookback_window)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS residual_diagnostics (
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        model_name TEXT NOT NULL,
+        lookback_window INTEGER NOT NULL,
+        window_days INTEGER NOT NULL,
+        residual_return DOUBLE,
+        top_1_day_contribution_pct DOUBLE,
+        top_3_days_contribution_pct DOUBLE,
+        positive_residual_days INTEGER,
+        negative_residual_days INTEGER,
+        residual_hit_rate DOUBLE,
+        max_positive_residual_day DATE,
+        max_negative_residual_day DATE,
+        data_quality_flag TEXT,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (as_of_date, ticker, model_name, lookback_window, window_days)
     )
     """,
 ]

@@ -189,9 +189,10 @@ def test_factor_dominated_positive_stance_capped_below_strong_constructive(
     amd = stance[stance["ticker"] == "AMD"].iloc[0]
     amd_caps = set(caps[caps["ticker"] == "AMD"]["cap_type"])
 
-    assert amd["stance"] == "constructive"
+    assert amd["stance"] == "neutral"
     assert "factor_led" in amd["stance_modifier"]
     assert "factor_dominated_positive_evidence" in amd_caps
+    assert "factor_led_insufficient_confirmation" in amd_caps
     assert "insufficient_non_factor_positive_confirmation" in amd_caps
     assert "factor_dominated_positive_stance" in set(conflicts["conflict_type"])
 

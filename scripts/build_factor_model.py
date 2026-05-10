@@ -6,9 +6,11 @@ from quant_learn.analytics.factor_model import (
     build_factor_residual_report,
     build_factor_residuals,
     build_market_factor_inputs,
+    build_residual_diagnostics,
     store_factor_exposures,
     store_factor_residuals,
     store_market_factor_inputs,
+    store_residual_diagnostics,
 )
 from quant_learn.config import CORE_TICKERS, EXPORT_DIR, ensure_directories
 
@@ -42,14 +44,21 @@ def main() -> None:
     residual_export = EXPORT_DIR / "factor_residuals.csv"
     residuals.to_csv(residual_export, index=False)
 
+    diagnostics = build_residual_diagnostics(tickers=args.tickers, lookback_window=args.window)
+    diagnostic_count = store_residual_diagnostics(diagnostics, lookback_window=args.window)
+    diagnostic_export = EXPORT_DIR / "residual_diagnostics.csv"
+    diagnostics.to_csv(diagnostic_export, index=False)
+
     report_path = build_factor_residual_report(Path(args.report))
 
     print(f"Upserted {input_count} market_factor_inputs rows.")
     print(f"Upserted {exposure_count} factor_exposures rows.")
     print(f"Upserted {residual_count} factor_residuals rows.")
+    print(f"Upserted {diagnostic_count} residual_diagnostics rows.")
     print(f"Exported {input_export}.")
     print(f"Exported {exposure_export}.")
     print(f"Exported {residual_export}.")
+    print(f"Exported {diagnostic_export}.")
     print(f"Wrote {report_path}.")
 
 

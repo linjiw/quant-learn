@@ -8,7 +8,9 @@ import pandas as pd
 
 from quant_learn.config import CORE_TICKERS
 from quant_learn.db import connect, initialize_database, upsert_dataframe
+from quant_learn.research_views import load_research_views
 from quant_learn.time import utc_now_naive
+from quant_learn.universe import evidence_weights_by_ticker
 
 EVIDENCE_COLUMNS = [
     "evidence_id",
@@ -91,114 +93,31 @@ STANCE_CONFLICT_COLUMNS = [
     "ingested_at",
 ]
 
-EVIDENCE_TYPE_WEIGHTS = {
-    "GOOGL": {
-        "segment_momentum": 0.25,
-        "cash_flow_quality": 0.25,
-        "valuation": 0.20,
-        "event_reaction": 0.10,
-        "factor_residual": 0.10,
-        "risk": 0.10,
-    },
-    "NVDA": {
-        "segment_momentum": 0.30,
-        "valuation": 0.20,
-        "event_reaction": 0.15,
-        "factor_residual": 0.15,
-        "risk": 0.12,
-        "cash_flow_quality": 0.08,
-    },
-    "AMD": {
-        "segment_momentum": 0.25,
-        "factor_residual": 0.20,
-        "valuation": 0.20,
-        "event_reaction": 0.15,
-        "risk": 0.10,
-        "cash_flow_quality": 0.10,
-    },
-    "TSM": {
-        "segment_momentum": 0.30,
-        "cash_flow_quality": 0.15,
-        "factor_residual": 0.15,
-        "valuation": 0.20,
-        "risk": 0.10,
-        "event_reaction": 0.10,
-    },
-}
-
+EVIDENCE_TYPE_WEIGHTS = evidence_weights_by_ticker()
+_RESEARCH_VIEWS = load_research_views()
 STATIC_THESIS = {
-    "GOOGL": (
-        "GOOGL remains a high-quality AI/Cloud compounder if Search resilience and "
-        "Cloud margin expansion can offset AI CapEx pressure."
-    ),
-    "NVDA": (
-        "NVDA retains AI compute platform leadership if Data Center growth, gross "
-        "margin, and supply visibility remain strong."
-    ),
-    "AMD": (
-        "AMD upside depends on becoming a credible second supplier in AI accelerators "
-        "while sustaining EPYC/Data Center momentum."
-    ),
-    "TSM": (
-        "TSM remains the manufacturing bottleneck of AI compute if monthly revenue "
-        "momentum, HPC mix, advanced node mix, and margin quality remain strong."
-    ),
+    ticker: (
+        _RESEARCH_VIEWS[ticker].thesis_text
+        if ticker in _RESEARCH_VIEWS
+        else f"{ticker} lacks a manually maintained thesis."
+    )
+    for ticker in CORE_TICKERS
 }
-
 FALSIFIERS = {
-    "GOOGL": [
-        "Search revenue growth decelerates materially.",
-        "Google Cloud growth slows while Cloud margin stalls.",
-        "CapEx / OCF rises further and FCF margin compresses.",
-        "Regulatory outcomes impair core advertising economics.",
-    ],
-    "NVDA": [
-        "Data Center growth or guidance decelerates sharply.",
-        "Gross margin compresses materially.",
-        "Hyperscaler CapEx commentary weakens.",
-        "AMD / ASIC competition begins pressuring pricing.",
-        "Export control impact becomes larger than expected.",
-    ],
-    "AMD": [
-        "Data Center growth fails to translate into margin improvement.",
-        "MI accelerator commentary or guidance disappoints.",
-        "Client/Gaming cyclicality masks weak AI traction.",
-        "NVDA platform dominance prevents meaningful share gain.",
-    ],
-    "TSM": [
-        "Monthly revenue decelerates.",
-        "HPC or advanced node mix weakens.",
-        "Overseas fab costs pressure gross margin.",
-        "CapEx rises without revenue/margin validation.",
-        "Taiwan/geopolitical risk widens valuation discount.",
-    ],
+    ticker: (
+        _RESEARCH_VIEWS[ticker].falsifiers
+        if ticker in _RESEARCH_VIEWS
+        else ["Add a manual falsifier in data/manual/research_views.csv."]
+    )
+    for ticker in CORE_TICKERS
 }
-
 NEXT_CATALYSTS = {
-    "GOOGL": [
-        "next earnings",
-        "Cloud margin update",
-        "AI CapEx commentary",
-        "regulatory rulings",
-    ],
-    "NVDA": [
-        "next earnings",
-        "Data Center guidance",
-        "product roadmap events",
-        "export-control updates",
-    ],
-    "AMD": [
-        "next earnings",
-        "MI accelerator commentary",
-        "EPYC/Data Center margins",
-        "AI event updates",
-    ],
-    "TSM": [
-        "monthly revenue",
-        "quarterly earnings",
-        "HPC/node mix update",
-        "CapEx and margin guidance",
-    ],
+    ticker: (
+        _RESEARCH_VIEWS[ticker].next_catalysts
+        if ticker in _RESEARCH_VIEWS
+        else ["Add next catalysts in data/manual/research_views.csv."]
+    )
+    for ticker in CORE_TICKERS
 }
 
 STRENGTH_VALUES = {"low": 0.25, "medium": 0.50, "high": 0.75, "very_high": 1.00}
@@ -206,6 +125,7 @@ STANCE_ORDER = ["high_risk", "cautious", "neutral", "constructive", "strong_cons
 FACTOR_DOMINANCE_THRESHOLD = 0.55
 FACTOR_LED_MODIFIER_THRESHOLD = 0.50
 MIN_NON_FACTOR_POSITIVE_TYPES_FOR_STRONG = 2
+MIN_NON_FACTOR_POSITIVE_COUNT_FOR_FACTOR_LED = 3
 
 CONFIDENCE_CAP_VALUES = {
     "limited_evidence": 0.55,
@@ -220,6 +140,8 @@ CONFIDENCE_CAP_VALUES = {
     "factor_dominated_positive_evidence": 0.70,
     "insufficient_non_factor_positive_confirmation": 0.70,
     "negative_valuation_evidence": 0.70,
+    "factor_led_insufficient_confirmation": 0.60,
+    "residual_concentration": 0.70,
 }
 
 CONFIDENCE_CAP_REASONS = {
@@ -242,6 +164,12 @@ CONFIDENCE_CAP_REASONS = {
     ),
     "negative_valuation_evidence": (
         "negative valuation evidence caps high-confidence positive stance"
+    ),
+    "factor_led_insufficient_confirmation": (
+        "factor-led stance requires at least three non-factor positive evidence rows"
+    ),
+    "residual_concentration": (
+        "positive residual evidence is concentrated in a small number of trading days"
     ),
 }
 
@@ -273,6 +201,7 @@ def build_evidence_cards(as_of_date: Optional[str] = None) -> pd.DataFrame:
              AND r.lookback_window = e.lookback_window
             """
         ).fetchdf()
+        residual_diagnostics = conn.execute("SELECT * FROM residual_diagnostics").fetchdf()
 
     cards = []
     effective_as_of = _as_of_date(
@@ -282,6 +211,7 @@ def build_evidence_cards(as_of_date: Optional[str] = None) -> pd.DataFrame:
         cash_flow_features,
         valuation_features,
         factor_residuals,
+        residual_diagnostics,
     )
     created_at = utc_now_naive()
     cards.extend(_event_evidence(event_reviews, event_returns, effective_as_of, created_at))
@@ -289,6 +219,9 @@ def build_evidence_cards(as_of_date: Optional[str] = None) -> pd.DataFrame:
     cards.extend(_cash_flow_evidence(cash_flow_features, effective_as_of, created_at))
     cards.extend(_valuation_evidence(valuation_features, effective_as_of, created_at))
     cards.extend(_factor_evidence(factor_residuals, effective_as_of, created_at))
+    cards.extend(
+        _residual_concentration_evidence(residual_diagnostics, effective_as_of, created_at)
+    )
 
     if not cards:
         return pd.DataFrame(columns=EVIDENCE_COLUMNS)
@@ -431,7 +364,11 @@ def store_stance_audit_tables(
     return component_count, cap_count, conflict_count
 
 
-def build_decision_memo(output_path: Path) -> Path:
+def build_decision_memo(
+    output_path: Path,
+    run_id: str | None = None,
+    data_snapshot_hash: str | None = None,
+) -> Path:
     """Write the AI compute four-stock decision memo."""
 
     initialize_database()
@@ -453,7 +390,12 @@ def build_decision_memo(output_path: Path) -> Path:
         return output_path
 
     as_of = pd.to_datetime(stance["as_of_date"]).max().date()
-    lines.extend([f"as_of_date: {as_of}", "", "## Executive Summary", ""])
+    lines.append(f"as_of_date: {as_of}")
+    if run_id:
+        lines.append(f"run_id: {run_id}")
+    if data_snapshot_hash:
+        lines.append(f"data_snapshot_hash: {data_snapshot_hash}")
+    lines.extend(["", "## Executive Summary", ""])
     lines.extend(_summary_table(stance))
     lines.extend(["", "## Cross-Stock Read", ""])
     lines.extend(_cross_stock_read(stance, evidence))
@@ -766,6 +708,65 @@ def _factor_evidence(factor_residuals: pd.DataFrame, as_of_date, created_at) -> 
     return rows
 
 
+def _residual_concentration_evidence(
+    residual_diagnostics: pd.DataFrame,
+    as_of_date,
+    created_at,
+) -> list[dict]:
+    if residual_diagnostics.empty:
+        return []
+    rows = []
+    diagnostics = residual_diagnostics.copy()
+    diagnostics["as_of_date"] = pd.to_datetime(diagnostics["as_of_date"])
+    latest = (
+        diagnostics[diagnostics["window_days"] == 60]
+        .sort_values("as_of_date")
+        .groupby("ticker", dropna=False)
+        .tail(1)
+    )
+    for _, row in latest.iterrows():
+        concentration = row.get("top_3_days_contribution_pct")
+        residual_return = row.get("residual_return")
+        if (
+            pd.isna(concentration)
+            or pd.isna(residual_return)
+            or float(concentration) <= 0.60
+            or float(residual_return) <= 0.0
+        ):
+            continue
+        rows.append(
+            _evidence_row(
+                as_of_date=as_of_date,
+                ticker=row["ticker"],
+                evidence_type="risk",
+                source_table="residual_diagnostics",
+                source_id=(
+                    f"{row['ticker']}:{row['model_name']}:{int(row['window_days'])}"
+                ),
+                source_date=row["as_of_date"],
+                available_date=row["as_of_date"],
+                direction="negative",
+                strength=_strength_from_materiality(float(concentration), [0.45, 0.60, 0.75]),
+                confidence=0.80,
+                materiality=float(concentration),
+                summary=(
+                    f"{row['ticker']} positive residual is concentrated: top 3 days "
+                    f"contribute {float(concentration) * 100:.1f}% of 60d absolute "
+                    "residual movement."
+                ),
+                metric_name="top_3_days_contribution_pct",
+                metric_value=concentration,
+                comparison_value=0.60,
+                interpretation="Factor-led evidence needs event attribution review.",
+                thesis_tag="factor_quality",
+                risk_tag="residual_concentration",
+                data_quality_flag=row.get("data_quality_flag"),
+                created_at=created_at,
+            )
+        )
+    return rows
+
+
 def _stance_row(ticker: str, evidence: pd.DataFrame, as_of_date, created_at) -> dict:
     if evidence.empty:
         return _empty_stance_row(ticker, as_of_date, created_at)
@@ -871,11 +872,22 @@ def _confidence_caps(
         & (evidence["evidence_type"] != "factor_residual")
     ]
     positive_factor_score = _positive_factor_score(evidence)
+    positive_non_factor_score = float(non_factor_positive["weighted_score"].sum())
     positive_factor_share = _positive_factor_share(evidence, positive_score)
     non_factor_positive_types = _non_factor_positive_type_count(evidence)
+    non_factor_positive_count = int(len(non_factor_positive))
     if positive_factor_score >= 15 and non_factor_positive.empty:
         caps.append("missing_non_factor_positive_evidence")
         caveats.append("strong constructive stance requires positive non-factor evidence")
+    if (
+        positive_factor_score >= positive_non_factor_score
+        and positive_factor_score > 0
+        and non_factor_positive_count < MIN_NON_FACTOR_POSITIVE_COUNT_FOR_FACTOR_LED
+    ):
+        caps.append("factor_led_insufficient_confirmation")
+        caveats.append(
+            "factor-led stance requires at least three non-factor positive evidence rows"
+        )
     if (
         positive_score >= 25
         and non_factor_positive_types < MIN_NON_FACTOR_POSITIVE_TYPES_FOR_STRONG
@@ -890,6 +902,9 @@ def _confidence_caps(
     ):
         caps.append("factor_dominated_positive_evidence")
         caveats.append("factor-led positive evidence needs non-factor confirmation")
+    if (evidence["risk_tag"] == "residual_concentration").any():
+        caps.append("residual_concentration")
+        caveats.append("positive residual evidence is concentrated in a few trading days")
     if ticker == "TSM":
         caps.append("tsm_fx_model_gap")
         caveats.append("TSM factor evidence is capped until USD/TWD is added to the model")
@@ -921,6 +936,11 @@ def _stance_from_score(net_score: float) -> str:
 
 
 def _apply_stance_caps(stance: str, caps: list[str]) -> str:
+    if (
+        "factor_led_insufficient_confirmation" in caps
+        and stance in {"strong_constructive", "constructive"}
+    ):
+        stance = "neutral"
     if "missing_segment_evidence" in caps and stance == "strong_constructive":
         stance = "constructive"
     if "missing_non_factor_positive_evidence" in caps and stance == "strong_constructive":
@@ -933,6 +953,8 @@ def _apply_stance_caps(stance: str, caps: list[str]) -> str:
     if "factor_dominated_positive_evidence" in caps and stance == "strong_constructive":
         stance = "constructive"
     if "negative_valuation_evidence" in caps and stance == "strong_constructive":
+        stance = "constructive"
+    if "residual_concentration" in caps and stance == "strong_constructive":
         stance = "constructive"
     if "limited_evidence" in caps and stance in {"strong_constructive", "constructive"}:
         stance = "neutral"
@@ -961,8 +983,10 @@ def _stance_modifier(
     modifiers = []
     if positive_stance and not negative_valuation.empty:
         modifiers.append("valuation_capped")
-    if positive_stance and positive_factor_share >= FACTOR_LED_MODIFIER_THRESHOLD:
+    if positive_factor_share >= FACTOR_LED_MODIFIER_THRESHOLD:
         modifiers.append("factor_led")
+    if "residual_concentration" in caps:
+        modifiers.append("residual_concentrated")
     if ticker == "TSM" and (
         "tsm_fx_model_gap" in caps
         or "missing_cash_flow_evidence" in caps
@@ -1117,11 +1141,7 @@ def _conflict_rows(
             )
         )
 
-    if (
-        stance in {"constructive", "strong_constructive"}
-        and not positive_factor.empty
-        and positive_factor_score >= positive_non_factor_score
-    ):
+    if not positive_factor.empty and positive_factor_score >= positive_non_factor_score:
         rows.append(
             _conflict_row(
                 as_of_date,
@@ -1795,6 +1815,7 @@ def _main_caveat(row: pd.Series) -> str:
         "valuation_capped": "valuation evidence caps upside",
         "valuation_supported": "valuation evidence supports setup",
         "valuation_unknown": "valuation evidence missing",
+        "residual_concentrated": "factor residual is concentrated",
         "factor_led": "needs non-factor confirmation",
         "factor_conflicted": "negative factor-residual conflict",
         "mixed_cash_flow": "cash-flow evidence is mixed",

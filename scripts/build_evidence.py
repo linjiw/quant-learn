@@ -1,6 +1,14 @@
 import argparse
+import shutil
 from pathlib import Path
 
+from quant_learn.analytics.auditability import (
+    archive_research_outputs,
+    build_freshness_snapshot,
+    data_snapshot_hash,
+    generate_run_id,
+    record_pipeline_run,
+)
 from quant_learn.analytics.evidence import (
     build_decision_memo,
     build_evidence_cards,
@@ -12,6 +20,7 @@ from quant_learn.analytics.evidence import (
     store_stance_audit_tables,
 )
 from quant_learn.config import EXPORT_DIR, ensure_directories
+from quant_learn.time import utc_now_naive
 
 
 def main() -> None:
@@ -21,9 +30,13 @@ def main() -> None:
     parser.add_argument("--as-of-date", default=None)
     parser.add_argument("--memo", default="reports/decision_memo.md")
     parser.add_argument("--audit-report", default="reports/stance_audit_report.md")
+    parser.add_argument("--run-id", default=None)
     args = parser.parse_args()
 
     ensure_directories()
+    run_id = args.run_id or generate_run_id("evidence")
+    started_at = utc_now_naive()
+    archive_research_outputs(run_id)
     evidence_cards = build_evidence_cards(as_of_date=args.as_of_date)
     evidence_count = store_evidence_cards(evidence_cards)
     evidence_export = EXPORT_DIR / "evidence_cards.csv"
@@ -44,9 +57,33 @@ def main() -> None:
     caps.to_csv(EXPORT_DIR / "stance_confidence_caps.csv", index=False)
     conflicts.to_csv(EXPORT_DIR / "stance_conflicts.csv", index=False)
 
-    memo_path = build_decision_memo(Path(args.memo))
-    audit_path = build_stance_audit_report(Path(args.audit_report))
+    freshness = build_freshness_snapshot()
+    snapshot_hash = data_snapshot_hash(freshness)
+    record_pipeline_run(
+        run_id=run_id,
+        started_at=started_at,
+        completed_at=utc_now_naive(),
+        mode="evidence",
+        from_step="evidence",
+        to_step="evidence",
+        force_stale=False,
+        status="success",
+        freshness_snapshot=freshness,
+    )
 
+    memo_path = build_decision_memo(
+        Path(args.memo),
+        run_id=run_id,
+        data_snapshot_hash=snapshot_hash,
+    )
+    audit_path = build_stance_audit_report(Path(args.audit_report))
+    history_dir = Path(args.memo).parent / "history"
+    history_dir.mkdir(parents=True, exist_ok=True)
+    history_memo = history_dir / f"decision_memo_{run_id}.md"
+    shutil.copyfile(memo_path, history_memo)
+
+    print(f"run_id: {run_id}")
+    print(f"data_snapshot_hash: {snapshot_hash}")
     print(f"Upserted {evidence_count} evidence_cards rows.")
     print(f"Upserted {stance_count} research_stance rows.")
     print(f"Upserted {component_count} stance_components rows.")
@@ -55,6 +92,7 @@ def main() -> None:
     print(f"Exported {evidence_export}.")
     print(f"Exported {stance_export}.")
     print(f"Wrote {memo_path}.")
+    print(f"Wrote {history_memo}.")
     print(f"Wrote {audit_path}.")
 
 

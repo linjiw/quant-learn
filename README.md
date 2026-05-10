@@ -34,6 +34,8 @@ The first version is deliberately a research system, not an auto-trading system.
     confidence caps, and conflict flags
 20. Audit-driven stance modifiers such as `factor_led`, `factor_conflicted`,
     `mixed_cash_flow`, `valuation_capped`, and `data_quality_capped`
+21. Research auditability tools: `pipeline_runs`, evidence/stance history tables,
+    residual concentration diagnostics, and `reports/weekly_digest.md`
 
 For the design rationale and table definitions, see `docs/system_design.md`.
 For the current loophole audit, see `docs/strategy_loopholes.md`.
@@ -167,8 +169,26 @@ current-screening fallback and marks those features as `snapshot_fallback`.
 residuals, and valuation features into source-linked evidence rows. `research_stance`
 turns those rows into a research stance with confidence caps, stance modifiers,
 falsifiers, next catalysts, and data-quality caveats. It also writes stance audit tables
-for component contribution, confidence-cap lineage, and explicit conflict flags. The
+for component contribution, confidence-cap lineage, and explicit conflict flags.
+`build_evidence` archives the prior evidence/stance/audit rows into history tables
+before rebuilding, records a `pipeline_runs` row, adds a `data_snapshot_hash` to the
+memo, and writes an ignored point-in-time memo copy under `reports/history/`. The
 output is a research memo, not a buy/sell instruction.
+
+Generate the weekly governance digest:
+
+```bash
+uv run python -m scripts.build_weekly_digest
+```
+
+Run the analytics pipeline sequentially with freshness checks:
+
+```bash
+uv run python -m scripts.run_pipeline --full
+```
+
+If you intentionally skip stale upstream steps, pass `--force-stale`; otherwise the
+runner fails fast when core upstream tables are stale or empty.
 
 Generate the visual research report:
 

@@ -97,6 +97,12 @@ CSV Exports
 `factor_residuals`
 : Daily expected return, contribution, and residual-return decomposition, including 5/20/60-day compounded residual returns.
 
+`residual_diagnostics`
+: Residual concentration diagnostics for 20/60-day windows. It records whether a
+factor-led residual move is broad-based or concentrated in the top 1/3 trading days.
+Positive residual evidence that is too concentrated becomes a risk evidence card and can
+cap confidence.
+
 `valuation_metrics`
 : Point-in-time trailing valuation metrics built from daily prices and the latest
 fundamentals with `available_date <= date`. It includes market cap, enterprise value,
@@ -142,6 +148,16 @@ the TSM FX-model gap.
 residual evidence, factor-dominated positive stance, and positive cash flow with negative
 segment evidence.
 
+`*_history`
+: Append-style archives for `evidence_cards`, `research_stance`, `stance_components`,
+`stance_confidence_caps`, and `stance_conflicts`. `build_evidence` archives the previous
+state before replacing current tables, so prior memos can be traced back to the evidence
+set that produced them.
+
+`pipeline_runs`
+: Pipeline run ledger with `run_id`, status, selected step range, freshness snapshot,
+and `data_snapshot_hash`. The hash is written into the decision memo for reproducibility.
+
 `valuation_snapshots`
 : Current valuation multiples from yfinance. Treat these as screening data and verify important values against primary filings or a paid data source.
 
@@ -181,12 +197,23 @@ hiding evidence imbalance or factor/operating-driver conflicts.
 at least two non-factor positive evidence categories. Factor-led upside can still be
 shown through `stance_modifier = factor_led`, but the memo must make the caveat visible.
 
-8. Valuation is price discipline, not a price target
+8. Factor-led stance needs row-level confirmation
+: If positive factor residual score is at least as large as positive non-factor score and
+there are fewer than three non-factor positive evidence rows, the stance is capped at
+`neutral`. Residual is evidence, not proof of alpha.
+
+9. Research views live outside code
+: `quant_learn/universe.py` stores structural configuration only: role, weights,
+required KPIs, driver features, and structural risks. Thesis text, falsifiers, and next
+catalysts live in `data/manual/research_views.csv` so research views can be updated
+without code changes.
+
+10. Valuation is price discipline, not a price target
 : The valuation layer separates "company quality" from "stock setup." First-pass
 valuation is trailing and reported, not forward consensus. Snapshot fallbacks are
 screening evidence only and carry lower confidence.
 
-9. Single writer
+11. Single writer
 : DuckDB supports many reads but only one writer at a time. Run ingestion scripts sequentially when writing to the same database file.
 
 ## Implemented CLI
@@ -211,6 +238,8 @@ uv run python -m scripts.build_event_returns --benchmarks QQQ SOXX SMH
 uv run python -m scripts.build_event_reviews
 uv run python -m scripts.build_valuation
 uv run python -m scripts.build_evidence
+uv run python -m scripts.build_weekly_digest
+uv run python -m scripts.run_pipeline --full
 uv run python -m scripts.ingest_valuation
 uv run python -m scripts.build_forward_analysis
 uv run python -m scripts.run_event_study --event-type earnings --window-before 5 --window-after 20
@@ -218,11 +247,11 @@ uv run python -m scripts.run_event_study --event-type earnings --window-before 5
 
 ## Next Implementation Steps
 
-1. Add a single-process pipeline runner to avoid DuckDB writer lock conflicts.
-2. Add a TSM-specific FX model with USD/TWD after validating the current
+1. Add a TSM-specific FX/local-market diagnostic before changing the TSM factor model.
+2. Add a stance backtest over archived evidence/stance rows.
+3. Add event abnormal-return z-scores using pre-event residual volatility.
+4. Add a TSM-specific FX model with USD/TWD after validating the current
    QQQ/SOXX/10Y residual layer.
-3. Add a catalyst calendar for earnings, TSMC monthly revenue, product events, and
+5. Add a catalyst calendar for earnings, TSMC monthly revenue, product events, and
    export-control/regulatory windows.
-4. Add residual concentration diagnostics to separate persistent residual strength from
-   one-day event spikes.
-5. Add an IV monitor table and adapter after choosing an options data source.
+6. Add an IV monitor table and adapter after choosing an options data source.

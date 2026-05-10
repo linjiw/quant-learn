@@ -10,4 +10,5 @@ data/duckdb/*.duckdb.wal
 data/processed/*.duckdb
 data/processed/*.duckdb.wal
 data/exports/
+reports/history/
 .env

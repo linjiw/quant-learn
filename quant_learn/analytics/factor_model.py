@@ -14,6 +14,7 @@ from quant_learn.time import utc_now_naive
 MODEL_NAME = "three_factor_raw"
 DEFAULT_WINDOW = 60
 DEFAULT_MIN_OBS = 40
+DIAGNOSTIC_WINDOWS = (20, 60)
 FACTOR_COLUMNS = ["qqq_return_1d", "soxx_return_1d", "delta_tnx_bps"]
 FACTOR_TICKERS = ["QQQ", "SOXX", "SMH", "SPY", "^TNX"]
 
@@ -209,6 +210,81 @@ def store_factor_residuals(residuals: pd.DataFrame, model_name: str = MODEL_NAME
             residuals,
             "factor_residuals",
             ["date", "ticker", "model_name", "lookback_window"],
+        )
+
+
+def build_residual_diagnostics(
+    tickers: Optional[Iterable[str]] = None,
+    model_name: str = MODEL_NAME,
+    lookback_window: int = DEFAULT_WINDOW,
+    windows: Iterable[int] = DIAGNOSTIC_WINDOWS,
+) -> pd.DataFrame:
+    """Build residual concentration diagnostics from daily residuals."""
+
+    ticker_list = list(tickers or CORE_TICKERS)
+    initialize_database()
+    with connect() as conn:
+        residuals = conn.execute(
+            """
+            SELECT *
+            FROM factor_residuals
+            WHERE ticker IN (SELECT unnest(?))
+              AND model_name = ?
+              AND lookback_window = ?
+            ORDER BY ticker, date
+            """,
+            [ticker_list, model_name, lookback_window],
+        ).fetchdf()
+    if residuals.empty:
+        return pd.DataFrame(columns=_residual_diagnostic_columns())
+
+    residuals["date"] = pd.to_datetime(residuals["date"])
+    ingested_at = utc_now_naive()
+    rows = []
+    for ticker, group in residuals.groupby("ticker", dropna=False):
+        clean = group.dropna(subset=["residual_return_1d"]).sort_values("date")
+        if clean.empty:
+            continue
+        as_of_date = clean["date"].max().date()
+        for window_days in windows:
+            rows.append(
+                _residual_diagnostic_row(
+                    ticker=str(ticker),
+                    clean=clean,
+                    as_of_date=as_of_date,
+                    model_name=model_name,
+                    lookback_window=lookback_window,
+                    window_days=int(window_days),
+                    ingested_at=ingested_at,
+                )
+            )
+    return pd.DataFrame(rows, columns=_residual_diagnostic_columns())
+
+
+def store_residual_diagnostics(
+    diagnostics: pd.DataFrame,
+    model_name: str = MODEL_NAME,
+    lookback_window: int = DEFAULT_WINDOW,
+) -> int:
+    """Store residual concentration diagnostics as a full rebuild for one model."""
+
+    initialize_database()
+    with connect() as conn:
+        conn.execute(
+            """
+            DELETE FROM residual_diagnostics
+            WHERE model_name = ?
+              AND lookback_window = ?
+            """,
+            [model_name, lookback_window],
+        )
+        if diagnostics.empty:
+            return 0
+        return upsert_dataframe(
+            conn,
+            diagnostics,
+            "residual_diagnostics",
+            ["as_of_date", "ticker", "model_name", "lookback_window", "window_days"],
         )
 
 
@@ -432,6 +508,49 @@ def _add_cumulative_residuals(residuals: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def _residual_diagnostic_row(
+    ticker: str,
+    clean: pd.DataFrame,
+    as_of_date,
+    model_name: str,
+    lookback_window: int,
+    window_days: int,
+    ingested_at,
+) -> dict:
+    window = clean.tail(window_days).copy()
+    residuals = window["residual_return_1d"].astype(float)
+    abs_sum = float(residuals.abs().sum())
+    top_abs = residuals.abs().sort_values(ascending=False)
+    data_quality = "complete" if len(window) >= window_days else "insufficient_window"
+    max_positive = window.loc[residuals.idxmax()] if not window.empty else None
+    max_negative = window.loc[residuals.idxmin()] if not window.empty else None
+    return {
+        "as_of_date": as_of_date,
+        "ticker": ticker,
+        "model_name": model_name,
+        "lookback_window": lookback_window,
+        "window_days": window_days,
+        "residual_return": float((1.0 + residuals).prod() - 1.0) if not window.empty else np.nan,
+        "top_1_day_contribution_pct": (
+            float(top_abs.head(1).sum() / abs_sum) if abs_sum else np.nan
+        ),
+        "top_3_days_contribution_pct": (
+            float(top_abs.head(3).sum() / abs_sum) if abs_sum else np.nan
+        ),
+        "positive_residual_days": int((residuals > 0).sum()),
+        "negative_residual_days": int((residuals < 0).sum()),
+        "residual_hit_rate": float((residuals > 0).mean()) if not window.empty else np.nan,
+        "max_positive_residual_day": (
+            pd.to_datetime(max_positive["date"]).date() if max_positive is not None else None
+        ),
+        "max_negative_residual_day": (
+            pd.to_datetime(max_negative["date"]).date() if max_negative is not None else None
+        ),
+        "data_quality_flag": data_quality,
+        "ingested_at": ingested_at,
+    }
+
+
 def _market_factor_columns() -> list[str]:
     return [
         "date",
@@ -482,6 +601,26 @@ def _factor_residual_columns() -> list[str]:
         "residual_return_5d",
         "residual_return_20d",
         "residual_return_60d",
+        "data_quality_flag",
+        "ingested_at",
+    ]
+
+
+def _residual_diagnostic_columns() -> list[str]:
+    return [
+        "as_of_date",
+        "ticker",
+        "model_name",
+        "lookback_window",
+        "window_days",
+        "residual_return",
+        "top_1_day_contribution_pct",
+        "top_3_days_contribution_pct",
+        "positive_residual_days",
+        "negative_residual_days",
+        "residual_hit_rate",
+        "max_positive_residual_day",
+        "max_negative_residual_day",
         "data_quality_flag",
         "ingested_at",
     ]

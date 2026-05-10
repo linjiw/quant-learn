@@ -113,6 +113,52 @@ def test_factor_residual_report_contains_all_four_tickers(tmp_path: Path, monkey
         assert f"## {ticker}" in report
 
 
+def test_residual_diagnostics_flags_concentrated_residuals(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "residual_diagnostics.duckdb"
+    _patch_factor_db(monkeypatch, db_path)
+    ingested_at = pd.Timestamp("2026-05-01")
+    dates = pd.bdate_range("2026-01-01", periods=70)
+    rows = []
+    for index, date in enumerate(dates):
+        residual = 0.001
+        if index in {64, 66, 68}:
+            residual = 0.10
+        rows.append(
+            {
+                "date": date.date(),
+                "ticker": "AMD",
+                "model_name": "three_factor_raw",
+                "lookback_window": 60,
+                "stock_return_1d": residual,
+                "expected_return_1d": 0.0,
+                "residual_return_1d": residual,
+                "market_contribution_1d": 0.0,
+                "sector_contribution_1d": 0.0,
+                "rate_contribution_1d": 0.0,
+                "alpha_contribution_1d": 0.0,
+                "residual_return_5d": None,
+                "residual_return_20d": None,
+                "residual_return_60d": None,
+                "data_quality_flag": "complete",
+                "ingested_at": ingested_at,
+            }
+        )
+    with duckdb.connect(str(db_path)) as conn:
+        conn.register("rows", pd.DataFrame(rows))
+        conn.execute("INSERT INTO factor_residuals SELECT * FROM rows")
+        conn.unregister("rows")
+
+    diagnostics = factor_model.build_residual_diagnostics(tickers=["AMD"])
+    row = diagnostics[diagnostics["window_days"] == 60].iloc[0]
+
+    assert row["ticker"] == "AMD"
+    assert row["top_3_days_contribution_pct"] > 0.60
+    assert row["data_quality_flag"] == "complete"
+
+
 def test_event_factor_attribution_uses_pre_event_exposure(
     tmp_path: Path,
     monkeypatch,
