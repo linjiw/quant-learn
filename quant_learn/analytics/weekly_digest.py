@@ -1,12 +1,15 @@
 """Weekly governance digest for stance auditability."""
 
+from datetime import timedelta
 from pathlib import Path
 
 import pandas as pd
 
+from quant_learn.analytics.auditability import build_freshness_snapshot
 from quant_learn.config import CORE_TICKERS
 from quant_learn.db import connect, initialize_database
 from quant_learn.research_views import load_research_views
+from quant_learn.time import utc_now_naive
 
 
 def build_weekly_digest(output_path: Path) -> Path:
@@ -37,6 +40,8 @@ def build_weekly_digest(output_path: Path) -> Path:
 
     lines = ["# Weekly AI Compute Research Digest", ""]
     lines.extend(_pipeline_section(pipeline_runs))
+    lines.extend(["", "## Upstream Data Freshness", ""])
+    lines.extend(_freshness_section(build_freshness_snapshot()))
     lines.extend(["", "## Stance Summary", ""])
     lines.extend(_stance_table(stance))
     lines.extend(["", "## High-Severity Conflicts", ""])
@@ -62,6 +67,23 @@ def _pipeline_section(pipeline_runs: pd.DataFrame) -> list[str]:
             f"- {row['run_id']}: {row['status']} "
             f"({row.get('from_step')} -> {row.get('to_step')}), "
             f"snapshot {row.get('data_snapshot_hash')}"
+        )
+    return lines
+
+
+def _freshness_section(freshness: list[dict]) -> list[str]:
+    upstream_tables = {"prices", "market_factor_inputs"}
+    rows = [row for row in freshness if row.get("table") in upstream_tables]
+    if not rows:
+        return ["- no upstream freshness snapshot available"]
+    lines = []
+    for row in rows:
+        staleness = row.get("staleness_days")
+        staleness_text = "unknown" if staleness is None else str(staleness)
+        lines.append(
+            f"- {row['table']}: rows={row['row_count']}, "
+            f"max_date={row.get('max_date') or 'n/a'}, "
+            f"staleness_days={staleness_text}"
         )
     return lines
 
@@ -123,16 +145,31 @@ def _residual_bullets(diagnostics: pd.DataFrame) -> list[str]:
 
 def _human_thesis_warnings(stance: pd.DataFrame) -> list[str]:
     views = load_research_views()
+    warnings = []
     missing_views = [ticker for ticker in CORE_TICKERS if ticker not in views]
     if missing_views:
-        return [f"- missing manual research view for {ticker}" for ticker in missing_views]
+        warnings.extend(f"- missing manual research view for {ticker}" for ticker in missing_views)
+    stale_cutoff = utc_now_naive().date() - timedelta(days=30)
+    for ticker in CORE_TICKERS:
+        view = views.get(ticker)
+        if view is None or not view.updated_at:
+            continue
+        updated_at = pd.to_datetime(view.updated_at, errors="coerce")
+        if pd.isna(updated_at):
+            warnings.append(f"- {ticker} manual research view has invalid updated_at")
+            continue
+        if updated_at.date() < stale_cutoff:
+            warnings.append(
+                f"- {ticker} manual research view last updated {view.updated_at} (>30d)"
+            )
     if stance.empty:
-        return ["- no stance rows available"]
+        warnings.append("- no stance rows available")
+        return warnings or ["- none"]
     missing = [
         ticker
         for ticker in CORE_TICKERS
         if ticker not in set(stance["ticker"]) or stance[stance["ticker"] == ticker].empty
     ]
     if missing:
-        return [f"- missing stance/research view for {ticker}" for ticker in missing]
-    return ["- none"]
+        warnings.extend(f"- missing stance/research view for {ticker}" for ticker in missing)
+    return warnings or ["- none"]

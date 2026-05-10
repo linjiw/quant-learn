@@ -1,8 +1,8 @@
 # AI Compute Four-Stock Decision Memo
 
 as_of_date: 2026-05-09
-run_id: evidence_20260510054956_e1ab0916
-data_snapshot_hash: 9f6172889b4e91de
+run_id: pipeline_20260510060953_3df8e3fb
+data_snapshot_hash: 5bb452b6394f387c
 
 ## Executive Summary
 

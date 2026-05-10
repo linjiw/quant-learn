@@ -14,6 +14,7 @@ from quant_learn.universe import evidence_weights_by_ticker
 
 EVIDENCE_COLUMNS = [
     "evidence_id",
+    "run_id",
     "as_of_date",
     "ticker",
     "evidence_type",
@@ -39,6 +40,7 @@ EVIDENCE_COLUMNS = [
 
 STANCE_COLUMNS = [
     "stance_id",
+    "run_id",
     "as_of_date",
     "ticker",
     "stance",
@@ -57,6 +59,7 @@ STANCE_COLUMNS = [
 ]
 
 STANCE_COMPONENT_COLUMNS = [
+    "run_id",
     "as_of_date",
     "ticker",
     "evidence_type",
@@ -71,6 +74,7 @@ STANCE_COMPONENT_COLUMNS = [
 ]
 
 STANCE_CAP_COLUMNS = [
+    "run_id",
     "as_of_date",
     "ticker",
     "cap_type",
@@ -82,6 +86,7 @@ STANCE_CAP_COLUMNS = [
 ]
 
 STANCE_CONFLICT_COLUMNS = [
+    "run_id",
     "as_of_date",
     "ticker",
     "conflict_type",
@@ -174,7 +179,10 @@ CONFIDENCE_CAP_REASONS = {
 }
 
 
-def build_evidence_cards(as_of_date: Optional[str] = None) -> pd.DataFrame:
+def build_evidence_cards(
+    as_of_date: Optional[str] = None,
+    run_id: Optional[str] = None,
+) -> pd.DataFrame:
     """Build evidence cards from event, segment, cash-flow, and factor layers."""
 
     initialize_database()
@@ -226,6 +234,7 @@ def build_evidence_cards(as_of_date: Optional[str] = None) -> pd.DataFrame:
     if not cards:
         return pd.DataFrame(columns=EVIDENCE_COLUMNS)
     evidence = pd.DataFrame(cards)
+    evidence["run_id"] = run_id or _run_id_from_frames(None, evidence)
     return evidence[EVIDENCE_COLUMNS].drop_duplicates(subset=["evidence_id"], keep="last")
 
 
@@ -240,7 +249,10 @@ def store_evidence_cards(evidence_cards: pd.DataFrame) -> int:
         return upsert_dataframe(conn, evidence_cards, "evidence_cards", ["evidence_id"])
 
 
-def build_research_stance(as_of_date: Optional[str] = None) -> pd.DataFrame:
+def build_research_stance(
+    as_of_date: Optional[str] = None,
+    run_id: Optional[str] = None,
+) -> pd.DataFrame:
     """Build research stance rows from stored evidence cards."""
 
     initialize_database()
@@ -252,11 +264,14 @@ def build_research_stance(as_of_date: Optional[str] = None) -> pd.DataFrame:
 
     evidence["source_date"] = pd.to_datetime(evidence["source_date"], errors="coerce")
     effective_as_of = _as_of_date(as_of_date, evidence)
+    output_run_id = _run_id_from_frames(run_id, evidence)
     created_at = utc_now_naive()
     rows = []
     for ticker in CORE_TICKERS:
         ticker_evidence = evidence[evidence["ticker"] == ticker].copy()
-        rows.append(_stance_row(ticker, ticker_evidence, effective_as_of, created_at))
+        rows.append(
+            _stance_row(ticker, ticker_evidence, effective_as_of, output_run_id, created_at)
+        )
     return pd.DataFrame(rows)[STANCE_COLUMNS]
 
 
@@ -273,6 +288,7 @@ def store_research_stance(research_stance: pd.DataFrame) -> int:
 
 def build_stance_audit_tables(
     as_of_date: Optional[str] = None,
+    run_id: Optional[str] = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Build stance component, confidence-cap, and conflict audit tables."""
 
@@ -290,6 +306,7 @@ def build_stance_audit_tables(
 
     evidence["source_date"] = pd.to_datetime(evidence["source_date"], errors="coerce")
     effective_as_of = _as_of_date(as_of_date, evidence, stance)
+    output_run_id = _run_id_from_frames(run_id, stance, evidence)
     created_at = utc_now_naive()
     component_rows = []
     cap_rows = []
@@ -312,10 +329,19 @@ def build_stance_audit_tables(
             if not stance_by_ticker.empty and ticker in stance_by_ticker.index
             else _apply_stance_caps(_stance_from_score(positive_score - negative_score), caps)
         )
-        component_rows.extend(_component_rows(ticker, scored, effective_as_of, created_at))
-        cap_rows.extend(_cap_rows(ticker, caps, effective_as_of, created_at))
+        component_rows.extend(
+            _component_rows(ticker, scored, effective_as_of, output_run_id, created_at)
+        )
+        cap_rows.extend(_cap_rows(ticker, caps, effective_as_of, output_run_id, created_at))
         conflict_rows.extend(
-            _conflict_rows(ticker, scored, stance_value, effective_as_of, created_at)
+            _conflict_rows(
+                ticker,
+                scored,
+                stance_value,
+                effective_as_of,
+                output_run_id,
+                created_at,
+            )
         )
 
     return (
@@ -366,8 +392,8 @@ def store_stance_audit_tables(
 
 def build_decision_memo(
     output_path: Path,
-    run_id: str | None = None,
-    data_snapshot_hash: str | None = None,
+    run_id: Optional[str] = None,
+    data_snapshot_hash: Optional[str] = None,
 ) -> Path:
     """Write the AI compute four-stock decision memo."""
 
@@ -390,6 +416,7 @@ def build_decision_memo(
         return output_path
 
     as_of = pd.to_datetime(stance["as_of_date"]).max().date()
+    run_id = run_id or _run_id_from_frames(None, stance)
     lines.append(f"as_of_date: {as_of}")
     if run_id:
         lines.append(f"run_id: {run_id}")
@@ -767,9 +794,15 @@ def _residual_concentration_evidence(
     return rows
 
 
-def _stance_row(ticker: str, evidence: pd.DataFrame, as_of_date, created_at) -> dict:
+def _stance_row(
+    ticker: str,
+    evidence: pd.DataFrame,
+    as_of_date,
+    run_id: str,
+    created_at,
+) -> dict:
     if evidence.empty:
-        return _empty_stance_row(ticker, as_of_date, created_at)
+        return _empty_stance_row(ticker, as_of_date, run_id, created_at)
 
     scored = _score_evidence_for_ticker(ticker, evidence, as_of_date)
     positive_score = scored.loc[scored["direction"] == "positive", "weighted_score"].sum()
@@ -789,6 +822,7 @@ def _stance_row(ticker: str, evidence: pd.DataFrame, as_of_date, created_at) -> 
 
     return {
         "stance_id": _stable_id("stance", ticker, as_of_date),
+        "run_id": run_id,
         "as_of_date": as_of_date,
         "ticker": ticker,
         "stance": stance,
@@ -876,21 +910,23 @@ def _confidence_caps(
     positive_factor_share = _positive_factor_share(evidence, positive_score)
     non_factor_positive_types = _non_factor_positive_type_count(evidence)
     non_factor_positive_count = int(len(non_factor_positive))
-    if positive_factor_score >= 15 and non_factor_positive.empty:
-        caps.append("missing_non_factor_positive_evidence")
-        caveats.append("strong constructive stance requires positive non-factor evidence")
-    if (
+    factor_led_insufficient = (
         positive_factor_score >= positive_non_factor_score
         and positive_factor_score > 0
         and non_factor_positive_count < MIN_NON_FACTOR_POSITIVE_COUNT_FOR_FACTOR_LED
-    ):
+    )
+    if factor_led_insufficient:
         caps.append("factor_led_insufficient_confirmation")
         caveats.append(
             "factor-led stance requires at least three non-factor positive evidence rows"
         )
+    elif positive_factor_score >= 15 and non_factor_positive.empty:
+        caps.append("missing_non_factor_positive_evidence")
+        caveats.append("strong constructive stance requires positive non-factor evidence")
     if (
         positive_score >= 25
         and non_factor_positive_types < MIN_NON_FACTOR_POSITIVE_TYPES_FOR_STRONG
+        and not factor_led_insufficient
     ):
         caps.append("insufficient_non_factor_positive_confirmation")
         caveats.append(
@@ -899,6 +935,7 @@ def _confidence_caps(
     if (
         positive_factor_share >= FACTOR_DOMINANCE_THRESHOLD
         and non_factor_positive_types < MIN_NON_FACTOR_POSITIVE_TYPES_FOR_STRONG
+        and not factor_led_insufficient
     ):
         caps.append("factor_dominated_positive_evidence")
         caveats.append("factor-led positive evidence needs non-factor confirmation")
@@ -983,7 +1020,7 @@ def _stance_modifier(
     modifiers = []
     if positive_stance and not negative_valuation.empty:
         modifiers.append("valuation_capped")
-    if positive_factor_share >= FACTOR_LED_MODIFIER_THRESHOLD:
+    if positive_stance and positive_factor_share >= FACTOR_LED_MODIFIER_THRESHOLD:
         modifiers.append("factor_led")
     if "residual_concentration" in caps:
         modifiers.append("residual_concentrated")
@@ -1008,9 +1045,10 @@ def _stance_modifier(
     return "+".join(dict.fromkeys(modifiers)) if modifiers else "clean"
 
 
-def _empty_stance_row(ticker: str, as_of_date, created_at) -> dict:
+def _empty_stance_row(ticker: str, as_of_date, run_id: str, created_at) -> dict:
     return {
         "stance_id": _stable_id("stance", ticker, as_of_date),
+        "run_id": run_id,
         "as_of_date": as_of_date,
         "ticker": ticker,
         "stance": "neutral",
@@ -1053,7 +1091,13 @@ def _risk_flags(scored: pd.DataFrame) -> list[str]:
     return list(dict.fromkeys(flags))
 
 
-def _component_rows(ticker: str, scored: pd.DataFrame, as_of_date, created_at) -> list[dict]:
+def _component_rows(
+    ticker: str,
+    scored: pd.DataFrame,
+    as_of_date,
+    run_id: str,
+    created_at,
+) -> list[dict]:
     rows = []
     grouped = scored.groupby(["evidence_type", "direction"], dropna=False)
     for (evidence_type, direction), group in grouped:
@@ -1065,6 +1109,7 @@ def _component_rows(ticker: str, scored: pd.DataFrame, as_of_date, created_at) -
         )
         rows.append(
             {
+                "run_id": run_id,
                 "as_of_date": as_of_date,
                 "ticker": ticker,
                 "evidence_type": evidence_type,
@@ -1081,11 +1126,12 @@ def _component_rows(ticker: str, scored: pd.DataFrame, as_of_date, created_at) -
     return rows
 
 
-def _cap_rows(ticker: str, caps: list[str], as_of_date, created_at) -> list[dict]:
+def _cap_rows(ticker: str, caps: list[str], as_of_date, run_id: str, created_at) -> list[dict]:
     rows = []
     for cap in caps:
         rows.append(
             {
+                "run_id": run_id,
                 "as_of_date": as_of_date,
                 "ticker": ticker,
                 "cap_type": cap,
@@ -1104,6 +1150,7 @@ def _conflict_rows(
     scored: pd.DataFrame,
     stance: str,
     as_of_date,
+    run_id: str,
     created_at,
 ) -> list[dict]:
     rows = []
@@ -1127,6 +1174,7 @@ def _conflict_rows(
         rows.append(
             _conflict_row(
                 as_of_date,
+                run_id,
                 ticker,
                 "positive_stance_negative_factor_residual",
                 _top_ids(scored[scored["direction"] == "positive"]),
@@ -1145,6 +1193,7 @@ def _conflict_rows(
         rows.append(
             _conflict_row(
                 as_of_date,
+                run_id,
                 ticker,
                 "factor_dominated_positive_stance",
                 _top_ids(positive_factor),
@@ -1163,6 +1212,7 @@ def _conflict_rows(
         rows.append(
             _conflict_row(
                 as_of_date,
+                run_id,
                 ticker,
                 "positive_stance_negative_valuation",
                 _top_ids(scored[scored["direction"] == "positive"]),
@@ -1181,6 +1231,7 @@ def _conflict_rows(
         rows.append(
             _conflict_row(
                 as_of_date,
+                run_id,
                 ticker,
                 "positive_factor_negative_valuation",
                 _top_ids(positive_factor),
@@ -1198,6 +1249,7 @@ def _conflict_rows(
         rows.append(
             _conflict_row(
                 as_of_date,
+                run_id,
                 ticker,
                 "positive_valuation_negative_factor",
                 _top_ids(positive_valuation),
@@ -1215,6 +1267,7 @@ def _conflict_rows(
         rows.append(
             _conflict_row(
                 as_of_date,
+                run_id,
                 ticker,
                 "positive_segment_negative_factor",
                 _top_ids(positive_segment),
@@ -1232,6 +1285,7 @@ def _conflict_rows(
         rows.append(
             _conflict_row(
                 as_of_date,
+                run_id,
                 ticker,
                 "positive_residual_missing_segment_support",
                 _top_ids(positive_factor),
@@ -1249,6 +1303,7 @@ def _conflict_rows(
         rows.append(
             _conflict_row(
                 as_of_date,
+                run_id,
                 ticker,
                 "positive_factor_negative_segment",
                 _top_ids(positive_factor),
@@ -1266,6 +1321,7 @@ def _conflict_rows(
         rows.append(
             _conflict_row(
                 as_of_date,
+                run_id,
                 ticker,
                 "positive_segment_negative_cash_flow",
                 _top_ids(positive_segment),
@@ -1283,6 +1339,7 @@ def _conflict_rows(
         rows.append(
             _conflict_row(
                 as_of_date,
+                run_id,
                 ticker,
                 "positive_cash_flow_negative_segment",
                 _top_ids(positive_cash),
@@ -1300,6 +1357,7 @@ def _conflict_rows(
 
 def _conflict_row(
     as_of_date,
+    run_id: str,
     ticker: str,
     conflict_type: str,
     positive_ids: str,
@@ -1309,6 +1367,7 @@ def _conflict_row(
     created_at,
 ) -> dict:
     return {
+        "run_id": run_id,
         "as_of_date": as_of_date,
         "ticker": ticker,
         "conflict_type": conflict_type,
@@ -1600,6 +1659,19 @@ def _evidence_row(**kwargs) -> dict:
         row[column] = _to_date(row[column])
     row["confidence"] = _bounded_confidence(row.get("confidence"))
     return row
+
+
+def _run_id_from_frames(explicit_run_id: Optional[str], *frames: pd.DataFrame) -> str:
+    if explicit_run_id:
+        return explicit_run_id
+    for frame in frames:
+        if frame.empty or "run_id" not in frame.columns:
+            continue
+        values = frame["run_id"].dropna().astype(str)
+        values = values[values.str.len() > 0]
+        if not values.empty:
+            return values.iloc[-1]
+    return _stable_id("run", utc_now_naive())
 
 
 def _stable_id(*parts: object) -> str:

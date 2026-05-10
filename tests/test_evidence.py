@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 import duckdb
 import pandas as pd
@@ -81,9 +82,15 @@ def test_decision_memo_contains_all_four_tickers_and_falsifiers(
     evidence.store_research_stance(stance)
     output_path = tmp_path / "decision_memo.md"
 
-    evidence.build_decision_memo(output_path)
+    evidence.build_decision_memo(
+        output_path,
+        run_id="memo_run_fixture",
+        data_snapshot_hash="snapshot_fixture",
+    )
     memo = output_path.read_text(encoding="utf-8")
 
+    assert "run_id: memo_run_fixture" in memo
+    assert "data_snapshot_hash: snapshot_fixture" in memo
     for ticker in ("GOOGL", "NVDA", "AMD", "TSM"):
         assert f"## {ticker}" in memo
     assert "### Falsifiers" in memo
@@ -132,7 +139,7 @@ def test_confidence_caps_are_recorded_when_applied(tmp_path: Path, monkeypatch) 
     assert "missing_segment_evidence" in amd_caps
     assert "missing_cash_flow_evidence" in amd_caps
     assert "missing_valuation_evidence" in amd_caps
-    assert "factor_dominated_positive_evidence" in amd_caps
+    assert "factor_led_insufficient_confirmation" in amd_caps
 
 
 def test_tsm_constructive_confidence_capped_by_fx_gap(
@@ -190,10 +197,10 @@ def test_factor_dominated_positive_stance_capped_below_strong_constructive(
     amd_caps = set(caps[caps["ticker"] == "AMD"]["cap_type"])
 
     assert amd["stance"] == "neutral"
-    assert "factor_led" in amd["stance_modifier"]
-    assert "factor_dominated_positive_evidence" in amd_caps
+    assert "factor_led" not in amd["stance_modifier"]
     assert "factor_led_insufficient_confirmation" in amd_caps
-    assert "insufficient_non_factor_positive_confirmation" in amd_caps
+    assert "factor_dominated_positive_evidence" not in amd_caps
+    assert "insufficient_non_factor_positive_confirmation" not in amd_caps
     assert "factor_dominated_positive_stance" in set(conflicts["conflict_type"])
 
 
@@ -449,6 +456,7 @@ def _direct_evidence_cards_without_segment_or_cash() -> pd.DataFrame:
         evidence_type = "event_reaction" if index < 3 else "factor_residual"
         rows.append(
             {
+                "run_id": "fixture_run",
                 "evidence_id": f"evidence_nvda_{index}",
                 "as_of_date": pd.Timestamp("2026-02-10").date(),
                 "ticker": "NVDA",
@@ -588,9 +596,10 @@ def _evidence_fixture_row(
     confidence: float,
     summary: str,
     metric_name: str,
-    risk_tag: str | None = None,
+    risk_tag: Optional[str] = None,
 ) -> dict:
     return {
+        "run_id": "fixture_run",
         "evidence_id": evidence_id,
         "as_of_date": pd.Timestamp("2026-02-10").date(),
         "ticker": ticker,

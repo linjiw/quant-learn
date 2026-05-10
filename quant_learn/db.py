@@ -265,6 +265,7 @@ SCHEMA_SQL = [
     """
     CREATE TABLE IF NOT EXISTS evidence_cards (
         evidence_id TEXT NOT NULL,
+        run_id TEXT,
         as_of_date DATE NOT NULL,
         ticker TEXT NOT NULL,
         evidence_type TEXT NOT NULL,
@@ -292,6 +293,7 @@ SCHEMA_SQL = [
     """
     CREATE TABLE IF NOT EXISTS research_stance (
         stance_id TEXT NOT NULL,
+        run_id TEXT,
         as_of_date DATE NOT NULL,
         ticker TEXT NOT NULL,
         stance TEXT NOT NULL,
@@ -312,6 +314,7 @@ SCHEMA_SQL = [
     """,
     """
     CREATE TABLE IF NOT EXISTS stance_components (
+        run_id TEXT,
         as_of_date DATE NOT NULL,
         ticker TEXT NOT NULL,
         evidence_type TEXT NOT NULL,
@@ -328,6 +331,7 @@ SCHEMA_SQL = [
     """,
     """
     CREATE TABLE IF NOT EXISTS stance_confidence_caps (
+        run_id TEXT,
         as_of_date DATE NOT NULL,
         ticker TEXT NOT NULL,
         cap_type TEXT NOT NULL,
@@ -341,6 +345,7 @@ SCHEMA_SQL = [
     """,
     """
     CREATE TABLE IF NOT EXISTS stance_conflicts (
+        run_id TEXT,
         as_of_date DATE NOT NULL,
         ticker TEXT NOT NULL,
         conflict_type TEXT NOT NULL,
@@ -778,7 +783,57 @@ MIGRATION_SQL = [
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS data_quality_score DOUBLE",
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS model_confidence DOUBLE",
     "ALTER TABLE investment_scorecard ADD COLUMN IF NOT EXISTS confidence_cap_reason TEXT",
+    "ALTER TABLE evidence_cards ADD COLUMN IF NOT EXISTS run_id TEXT",
+    "ALTER TABLE research_stance ADD COLUMN IF NOT EXISTS run_id TEXT",
+    "ALTER TABLE stance_components ADD COLUMN IF NOT EXISTS run_id TEXT",
+    "ALTER TABLE stance_confidence_caps ADD COLUMN IF NOT EXISTS run_id TEXT",
+    "ALTER TABLE stance_conflicts ADD COLUMN IF NOT EXISTS run_id TEXT",
     "ALTER TABLE research_stance ADD COLUMN IF NOT EXISTS stance_modifier TEXT",
+    """
+    UPDATE evidence_cards
+    SET run_id = COALESCE(
+        run_id,
+        (SELECT run_id FROM pipeline_runs ORDER BY started_at DESC LIMIT 1),
+        'legacy_untracked'
+    )
+    WHERE run_id IS NULL
+    """,
+    """
+    UPDATE research_stance
+    SET run_id = COALESCE(
+        run_id,
+        (SELECT run_id FROM pipeline_runs ORDER BY started_at DESC LIMIT 1),
+        'legacy_untracked'
+    )
+    WHERE run_id IS NULL
+    """,
+    """
+    UPDATE stance_components
+    SET run_id = COALESCE(
+        run_id,
+        (SELECT run_id FROM pipeline_runs ORDER BY started_at DESC LIMIT 1),
+        'legacy_untracked'
+    )
+    WHERE run_id IS NULL
+    """,
+    """
+    UPDATE stance_confidence_caps
+    SET run_id = COALESCE(
+        run_id,
+        (SELECT run_id FROM pipeline_runs ORDER BY started_at DESC LIMIT 1),
+        'legacy_untracked'
+    )
+    WHERE run_id IS NULL
+    """,
+    """
+    UPDATE stance_conflicts
+    SET run_id = COALESCE(
+        run_id,
+        (SELECT run_id FROM pipeline_runs ORDER BY started_at DESC LIMIT 1),
+        'legacy_untracked'
+    )
+    WHERE run_id IS NULL
+    """,
 ]
 
 

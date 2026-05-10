@@ -5,7 +5,6 @@ from pathlib import Path
 from quant_learn.analytics.auditability import (
     archive_research_outputs,
     build_freshness_snapshot,
-    data_snapshot_hash,
     generate_run_id,
     record_pipeline_run,
 )
@@ -36,51 +35,68 @@ def main() -> None:
     ensure_directories()
     run_id = args.run_id or generate_run_id("evidence")
     started_at = utc_now_naive()
-    archive_research_outputs(run_id)
-    evidence_cards = build_evidence_cards(as_of_date=args.as_of_date)
-    evidence_count = store_evidence_cards(evidence_cards)
-    evidence_export = EXPORT_DIR / "evidence_cards.csv"
-    evidence_cards.to_csv(evidence_export, index=False)
+    try:
+        archive_research_outputs(run_id)
+        evidence_cards = build_evidence_cards(as_of_date=args.as_of_date, run_id=run_id)
+        evidence_count = store_evidence_cards(evidence_cards)
+        evidence_export = EXPORT_DIR / "evidence_cards.csv"
+        evidence_cards.to_csv(evidence_export, index=False)
 
-    research_stance = build_research_stance(as_of_date=args.as_of_date)
-    stance_count = store_research_stance(research_stance)
-    stance_export = EXPORT_DIR / "research_stance.csv"
-    research_stance.to_csv(stance_export, index=False)
+        research_stance = build_research_stance(as_of_date=args.as_of_date, run_id=run_id)
+        stance_count = store_research_stance(research_stance)
+        stance_export = EXPORT_DIR / "research_stance.csv"
+        research_stance.to_csv(stance_export, index=False)
 
-    components, caps, conflicts = build_stance_audit_tables(as_of_date=args.as_of_date)
-    component_count, cap_count, conflict_count = store_stance_audit_tables(
-        components,
-        caps,
-        conflicts,
-    )
-    components.to_csv(EXPORT_DIR / "stance_components.csv", index=False)
-    caps.to_csv(EXPORT_DIR / "stance_confidence_caps.csv", index=False)
-    conflicts.to_csv(EXPORT_DIR / "stance_conflicts.csv", index=False)
+        components, caps, conflicts = build_stance_audit_tables(
+            as_of_date=args.as_of_date,
+            run_id=run_id,
+        )
+        component_count, cap_count, conflict_count = store_stance_audit_tables(
+            components,
+            caps,
+            conflicts,
+        )
+        components.to_csv(EXPORT_DIR / "stance_components.csv", index=False)
+        caps.to_csv(EXPORT_DIR / "stance_confidence_caps.csv", index=False)
+        conflicts.to_csv(EXPORT_DIR / "stance_conflicts.csv", index=False)
 
-    freshness = build_freshness_snapshot()
-    snapshot_hash = data_snapshot_hash(freshness)
-    record_pipeline_run(
-        run_id=run_id,
-        started_at=started_at,
-        completed_at=utc_now_naive(),
-        mode="evidence",
-        from_step="evidence",
-        to_step="evidence",
-        force_stale=False,
-        status="success",
-        freshness_snapshot=freshness,
-    )
+        freshness = build_freshness_snapshot()
+        snapshot_hash = record_pipeline_run(
+            run_id=run_id,
+            started_at=started_at,
+            completed_at=utc_now_naive(),
+            mode="evidence",
+            from_step="evidence",
+            to_step="evidence",
+            force_stale=False,
+            status="success",
+            freshness_snapshot=freshness,
+        )
 
-    memo_path = build_decision_memo(
-        Path(args.memo),
-        run_id=run_id,
-        data_snapshot_hash=snapshot_hash,
-    )
-    audit_path = build_stance_audit_report(Path(args.audit_report))
-    history_dir = Path(args.memo).parent / "history"
-    history_dir.mkdir(parents=True, exist_ok=True)
-    history_memo = history_dir / f"decision_memo_{run_id}.md"
-    shutil.copyfile(memo_path, history_memo)
+        memo_path = build_decision_memo(
+            Path(args.memo),
+            run_id=run_id,
+            data_snapshot_hash=snapshot_hash,
+        )
+        audit_path = build_stance_audit_report(Path(args.audit_report))
+        history_dir = Path(args.memo).parent / "history"
+        history_dir.mkdir(parents=True, exist_ok=True)
+        history_memo = history_dir / f"decision_memo_{run_id}.md"
+        shutil.copyfile(memo_path, history_memo)
+    except Exception as exc:
+        record_pipeline_run(
+            run_id=run_id,
+            started_at=started_at,
+            completed_at=utc_now_naive(),
+            mode="evidence",
+            from_step="evidence",
+            to_step="evidence",
+            force_stale=False,
+            status="failed",
+            freshness_snapshot=build_freshness_snapshot(),
+            error_message=str(exc),
+        )
+        raise
 
     print(f"run_id: {run_id}")
     print(f"data_snapshot_hash: {snapshot_hash}")

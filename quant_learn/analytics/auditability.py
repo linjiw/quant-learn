@@ -3,6 +3,7 @@
 import hashlib
 import json
 from collections.abc import Iterable
+from typing import Optional
 
 import duckdb
 import pandas as pd
@@ -55,34 +56,67 @@ def build_freshness_snapshot(tables: Iterable[str] = FRESHNESS_TABLES) -> list[d
 def data_snapshot_hash(freshness_snapshot: list[dict]) -> str:
     """Hash a freshness snapshot for memo/run traceability."""
 
-    payload = json.dumps(freshness_snapshot, sort_keys=True, default=str)
+    stable_snapshot = [
+        {
+            "table": row.get("table"),
+            "row_count": row.get("row_count"),
+            "max_date": row.get("max_date"),
+            "max_available_date": row.get("max_available_date"),
+        }
+        for row in freshness_snapshot
+    ]
+    payload = json.dumps(stable_snapshot, sort_keys=True, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
-def archive_research_outputs(run_id: str) -> None:
-    """Archive current evidence/stance/audit tables before rebuilding them."""
+def archive_research_outputs(fallback_run_id: Optional[str] = None) -> None:
+    """Archive current evidence/stance/audit tables before rebuilding them.
+
+    History `run_id` values come from the source rows themselves. `fallback_run_id`
+    is used only for legacy rows created before run_id was added to current tables.
+    """
 
     initialize_database()
     archived_at = utc_now_naive()
+    fallback = fallback_run_id or "legacy_untracked"
     with connect() as conn:
         for source_table, history_table in HISTORY_TABLES.items():
             row_count = conn.execute(f"SELECT COUNT(*) FROM {source_table}").fetchone()[0]
             if not row_count:
                 continue
-            conn.execute(f"DELETE FROM {history_table} WHERE run_id = ?", [run_id])
             columns = _table_columns(conn, source_table)
-            column_sql = ", ".join(columns)
+            source_columns = [column for column in columns if column != "run_id"]
+            source_column_sql = ", ".join(source_columns)
+            if "run_id" in columns:
+                run_ids = [
+                    row[0]
+                    for row in conn.execute(
+                        f"SELECT DISTINCT COALESCE(run_id, ?) FROM {source_table}",
+                        [fallback],
+                    ).fetchall()
+                ]
+                for source_run_id in run_ids:
+                    conn.execute(
+                        f"DELETE FROM {history_table} WHERE run_id = ?",
+                        [source_run_id],
+                    )
+                run_id_sql = "COALESCE(run_id, ?)"
+                params = [fallback, archived_at]
+            else:
+                conn.execute(f"DELETE FROM {history_table} WHERE run_id = ?", [fallback])
+                run_id_sql = "?"
+                params = [fallback, archived_at]
             conn.execute(
                 f"""
                 INSERT INTO {history_table} (
                     run_id,
                     archived_at,
-                    {column_sql}
+                    {source_column_sql}
                 )
-                SELECT ?, ?, {column_sql}
+                SELECT {run_id_sql}, ?, {source_column_sql}
                 FROM {source_table}
                 """,
-                [run_id, archived_at],
+                params,
             )
 
 
@@ -97,7 +131,7 @@ def record_pipeline_run(
     force_stale: bool,
     status: str,
     freshness_snapshot: list[dict],
-    error_message: str | None = None,
+    error_message: Optional[str] = None,
 ) -> str:
     """Upsert one pipeline run row and return its data snapshot hash."""
 

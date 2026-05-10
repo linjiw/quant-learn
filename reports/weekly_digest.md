@@ -2,7 +2,15 @@
 
 ## Latest Pipeline Runs
 
-- evidence_20260510054956_e1ab0916: success (evidence -> evidence), snapshot 9f6172889b4e91de
+- pipeline_20260510060953_3df8e3fb: success (evidence -> weekly_digest), snapshot 5bb452b6394f387c
+- pipeline_20260510060911_9fa7dc23: success (evidence -> weekly_digest), snapshot 5bb452b6394f387c
+- v104_validation_20260510020837: success (evidence -> evidence), snapshot 5bb452b6394f387c
+- pipeline_20260510060823_89783932: dry_run (fundamentals -> weekly_digest), snapshot 5bb452b6394f387c
+
+## Upstream Data Freshness
+
+- prices: rows=21065, max_date=2026-05-08, staleness_days=0
+- market_factor_inputs: rows=2099, max_date=2026-05-08, staleness_days=0
 
 ## Stance Summary
 

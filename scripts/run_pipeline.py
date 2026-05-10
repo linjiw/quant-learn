@@ -24,9 +24,11 @@ PIPELINE_STEPS = [
         ],
     ),
     ("valuation", [["scripts.build_valuation"]]),
-    ("evidence", [["scripts.build_evidence"]]),
+    ("evidence", [["scripts.build_evidence", "--run-id", "{run_id}"]]),
     ("weekly_digest", [["scripts.build_weekly_digest"]]),
 ]
+
+UPSTREAM_FRESHNESS_TABLES = {"prices", "market_factor_inputs"}
 
 
 def main() -> None:
@@ -47,6 +49,7 @@ def main() -> None:
     run_id = generate_run_id("pipeline")
     started_at = utc_now_naive()
     freshness = build_freshness_snapshot()
+    _print_upstream_freshness_warnings(freshness, args.max_staleness_days)
 
     selected = _selected_steps(args.from_step, args.to_step)
     skipped_upstream = _skipped_upstream_steps(args.from_step)
@@ -64,25 +67,22 @@ def main() -> None:
             raise SystemExit(f"Stale upstream data detected: {tables}")
 
     try:
+        recorded_final = False
         for step_name, commands in selected:
             print(f"== {step_name} ==")
             for command in commands:
-                full_command = [sys.executable, "-m", *command]
+                resolved_command = [
+                    run_id if part == "{run_id}" else part for part in command
+                ]
+                full_command = [sys.executable, "-m", *resolved_command]
                 print(" ".join(full_command))
+                if step_name == "weekly_digest" and not args.dry_run and not recorded_final:
+                    _record_success(run_id, started_at, args, build_freshness_snapshot())
+                    recorded_final = True
                 if not args.dry_run:
                     subprocess.run(full_command, check=True)
-        final_freshness = build_freshness_snapshot()
-        record_pipeline_run(
-            run_id=run_id,
-            started_at=started_at,
-            completed_at=utc_now_naive(),
-            mode="full" if args.full else "partial",
-            from_step=args.from_step,
-            to_step=args.to_step,
-            force_stale=args.force_stale,
-            status="dry_run" if args.dry_run else "success",
-            freshness_snapshot=final_freshness,
-        )
+        if not recorded_final:
+            _record_success(run_id, started_at, args, build_freshness_snapshot())
     except Exception as exc:
         _record_failure(run_id, started_at, args, build_freshness_snapshot(), str(exc))
         raise
@@ -119,6 +119,42 @@ def _record_failure(run_id: str, started_at, args, freshness, error_message: str
         freshness_snapshot=freshness,
         error_message=error_message,
     )
+
+
+def _record_success(run_id: str, started_at, args, freshness) -> None:
+    record_pipeline_run(
+        run_id=run_id,
+        started_at=started_at,
+        completed_at=utc_now_naive(),
+        mode="full" if args.full else "partial",
+        from_step=args.from_step,
+        to_step=args.to_step,
+        force_stale=args.force_stale,
+        status="dry_run" if args.dry_run else "success",
+        freshness_snapshot=freshness,
+    )
+
+
+def _print_upstream_freshness_warnings(
+    freshness: list[dict],
+    max_staleness_days: int,
+) -> None:
+    upstream = [
+        row
+        for row in freshness
+        if row.get("table") in UPSTREAM_FRESHNESS_TABLES
+        and (
+            row.get("row_count") == 0
+            or row.get("staleness_days") is None
+            or row.get("staleness_days") > max_staleness_days
+        )
+    ]
+    if not upstream:
+        return
+    tables = ", ".join(
+        f"{row['table']}({row.get('staleness_days', 'unknown')})" for row in upstream
+    )
+    print(f"WARNING: upstream freshness may be stale: {tables}", file=sys.stderr)
 
 
 if __name__ == "__main__":
