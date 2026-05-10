@@ -106,6 +106,31 @@ def test_store_research_outputs_rolls_back_on_write_failure(
     assert current["run_id"].tolist() == ["old_run"]
 
 
+def test_store_research_outputs_refuses_all_empty_inputs(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "empty_store_guard.duckdb"
+    _patch_evidence_db(monkeypatch, db_path)
+    old_cards = _direct_conflicted_constructive_evidence()
+    old_cards["run_id"] = "old_run"
+    evidence.store_evidence_cards(old_cards)
+
+    with pytest.raises(ValueError, match="refusing to wipe"):
+        evidence.store_research_outputs(
+            pd.DataFrame(columns=evidence.EVIDENCE_COLUMNS),
+            pd.DataFrame(columns=evidence.STANCE_COLUMNS),
+            pd.DataFrame(columns=evidence.STANCE_COMPONENT_COLUMNS),
+            pd.DataFrame(columns=evidence.STANCE_CAP_COLUMNS),
+            pd.DataFrame(columns=evidence.STANCE_CONFLICT_COLUMNS),
+        )
+
+    with duckdb.connect(str(db_path)) as conn:
+        current = conn.execute("SELECT DISTINCT run_id FROM evidence_cards").fetchdf()
+
+    assert current["run_id"].tolist() == ["old_run"]
+
+
 def test_research_stance_rejects_ambiguous_run_id(
     tmp_path: Path,
     monkeypatch,

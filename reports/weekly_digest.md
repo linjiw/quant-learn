@@ -2,10 +2,10 @@
 
 ## Latest Pipeline Runs
 
+- pipeline_20260510063955_3da8d93e: success (fundamentals -> weekly_digest), snapshot 5bb452b6394f387c
 - pipeline_20260510063016_e630246c: success (fundamentals -> weekly_digest), snapshot 5bb452b6394f387c
 - pipeline_20260510062147_42f1451e: success (fundamentals -> weekly_digest), snapshot 5bb452b6394f387c
 - pipeline_20260510062050_9fd4f913: success (evidence -> weekly_digest), snapshot 5bb452b6394f387c, force-stale
-- pipeline_20260510061957_98220e1f: success (evidence -> weekly_digest), snapshot 5bb452b6394f387c, force-stale
 
 ## Upstream Data Freshness
 

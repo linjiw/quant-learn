@@ -241,7 +241,11 @@ def build_evidence_cards(
 
 
 def store_evidence_cards(evidence_cards: pd.DataFrame) -> int:
-    """Store evidence cards as a full rebuild."""
+    """Legacy single-table rebuild for tests and fixtures.
+
+    Production code must use `store_research_outputs` so evidence, stance, and
+    audit tables are committed atomically.
+    """
 
     initialize_database()
     with connect() as conn:
@@ -256,7 +260,11 @@ def build_research_stance(
     run_id: Optional[str] = None,
     evidence_cards: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
-    """Build research stance rows from stored evidence cards."""
+    """Build research stance rows.
+
+    If `evidence_cards` is provided, the database is not queried. This supports
+    the in-memory production pipeline before the new run is committed.
+    """
 
     initialize_database()
     if evidence_cards is None:
@@ -282,7 +290,11 @@ def build_research_stance(
 
 
 def store_research_stance(research_stance: pd.DataFrame) -> int:
-    """Store research stance rows as a full rebuild."""
+    """Legacy single-table rebuild for tests and fixtures.
+
+    Production code must use `store_research_outputs` so evidence, stance, and
+    audit tables are committed atomically.
+    """
 
     initialize_database()
     with connect() as conn:
@@ -298,7 +310,12 @@ def build_stance_audit_tables(
     evidence_cards: Optional[pd.DataFrame] = None,
     research_stance: Optional[pd.DataFrame] = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Build stance component, confidence-cap, and conflict audit tables."""
+    """Build stance component, confidence-cap, and conflict audit tables.
+
+    If `evidence_cards` and/or `research_stance` are provided, those frames are
+    used instead of querying current DB tables. This supports the in-memory
+    production pipeline before the new run is committed.
+    """
 
     initialize_database()
     if evidence_cards is None or research_stance is None:
@@ -376,7 +393,11 @@ def store_stance_audit_tables(
     caps: pd.DataFrame,
     conflicts: pd.DataFrame,
 ) -> tuple[int, int, int]:
-    """Store stance audit tables as a full rebuild."""
+    """Legacy single-table rebuild for tests and fixtures.
+
+    Production code must use `store_research_outputs` so evidence, stance, and
+    audit tables are committed atomically.
+    """
 
     initialize_database()
     with connect() as conn:
@@ -417,9 +438,17 @@ def store_research_outputs(
     caps: pd.DataFrame,
     conflicts: pd.DataFrame,
 ) -> tuple[int, int, int, int, int]:
-    """Store all research outputs in one transaction after all builds succeed."""
+    """Store all current research outputs in one transaction after builds succeed."""
 
     initialize_database()
+    if all(
+        frame.empty
+        for frame in (evidence_cards, research_stance, components, caps, conflicts)
+    ):
+        raise ValueError(
+            "refusing to wipe current research outputs with all-empty inputs; "
+            "build non-empty frames or add an explicit truncation function"
+        )
     with connect() as conn:
         conn.execute("BEGIN TRANSACTION")
         try:
@@ -468,10 +497,13 @@ def store_research_outputs(
                 if not conflicts.empty
                 else 0
             )
+            conn.execute("COMMIT")
         except Exception:
-            conn.execute("ROLLBACK")
+            try:
+                conn.execute("ROLLBACK")
+            except Exception:
+                pass
             raise
-        conn.execute("COMMIT")
     return evidence_count, stance_count, component_count, cap_count, conflict_count
 
 
