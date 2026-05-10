@@ -131,7 +131,8 @@ def test_confidence_caps_are_recorded_when_applied(tmp_path: Path, monkeypatch) 
     assert "limited_evidence" in amd_caps
     assert "missing_segment_evidence" in amd_caps
     assert "missing_cash_flow_evidence" in amd_caps
-    assert "missing_non_factor_positive_evidence" in amd_caps
+    assert "missing_valuation_evidence" in amd_caps
+    assert "factor_dominated_positive_evidence" in amd_caps
 
 
 def test_tsm_constructive_confidence_capped_by_fx_gap(
@@ -168,7 +169,7 @@ def test_positive_stance_with_negative_factor_residual_sets_conflict_flag(
     nvda = stance[stance["ticker"] == "NVDA"].iloc[0]
 
     assert nvda["stance"] in {"constructive", "strong_constructive"}
-    assert nvda["stance_modifier"] == "factor_conflicted"
+    assert "factor_conflicted" in nvda["stance_modifier"]
     assert "positive_stance_negative_factor_residual" in set(conflicts["conflict_type"])
     assert "positive_segment_negative_factor" in set(conflicts["conflict_type"])
 
@@ -189,7 +190,7 @@ def test_factor_dominated_positive_stance_capped_below_strong_constructive(
     amd_caps = set(caps[caps["ticker"] == "AMD"]["cap_type"])
 
     assert amd["stance"] == "constructive"
-    assert amd["stance_modifier"] == "factor_led"
+    assert "factor_led" in amd["stance_modifier"]
     assert "factor_dominated_positive_evidence" in amd_caps
     assert "insufficient_non_factor_positive_confirmation" in amd_caps
     assert "factor_dominated_positive_stance" in set(conflicts["conflict_type"])

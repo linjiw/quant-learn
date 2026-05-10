@@ -97,10 +97,24 @@ CSV Exports
 `factor_residuals`
 : Daily expected return, contribution, and residual-return decomposition, including 5/20/60-day compounded residual returns.
 
+`valuation_metrics`
+: Point-in-time trailing valuation metrics built from daily prices and the latest
+fundamentals with `available_date <= date`. It includes market cap, enterprise value,
+TTM revenue/gross profit/operating income/net income/FCF, trailing multiples, growth
+rates, valuation percentiles, source fundamental IDs, and data-quality flags.
+
+`valuation_features`
+: Valuation evidence features such as valuation percentile, FCF yield, EV/Sales,
+gross-profit multiple, growth-adjusted valuation, and GOOGL capex-adjusted FCF. If PIT
+fundamentals cannot produce usable features for a ticker such as `TSM`, the builder can
+fall back to the latest `valuation_snapshots` screening row with low confidence and
+`data_quality_flag = snapshot_fallback`.
+
 `evidence_cards`
 : Source-linked evidence synthesized from event reactions, segment momentum,
-cash-flow quality, and factor residuals. Each card carries direction, strength,
-confidence, materiality, thesis/risk tags, data-quality flags, and source lineage.
+cash-flow quality, factor residuals, and valuation features. Each card carries
+direction, strength, confidence, materiality, thesis/risk tags, data-quality flags, and
+source lineage.
 
 `research_stance`
 : Per-ticker research stance generated from evidence cards. Stance values are
@@ -109,6 +123,10 @@ Each row also carries a `stance_modifier` such as `factor_led`, `factor_conflict
 `mixed_cash_flow`, or `data_quality_capped`. Confidence is capped when evidence coverage
 is thin, segment/cash-flow/factor evidence is missing, data-quality issues are material,
 or TSM factor evidence lacks an FX factor.
+
+Negative valuation evidence can cap high-confidence positive stances and add
+`valuation_capped` to `stance_modifier`. Missing valuation evidence adds
+`valuation_unknown`.
 
 `stance_components`
 : Audit table that decomposes each stance by evidence type and direction. It records
@@ -163,7 +181,12 @@ hiding evidence imbalance or factor/operating-driver conflicts.
 at least two non-factor positive evidence categories. Factor-led upside can still be
 shown through `stance_modifier = factor_led`, but the memo must make the caveat visible.
 
-8. Single writer
+8. Valuation is price discipline, not a price target
+: The valuation layer separates "company quality" from "stock setup." First-pass
+valuation is trailing and reported, not forward consensus. Snapshot fallbacks are
+screening evidence only and carry lower confidence.
+
+9. Single writer
 : DuckDB supports many reads but only one writer at a time. Run ingestion scripts sequentially when writing to the same database file.
 
 ## Implemented CLI
@@ -186,6 +209,7 @@ uv run python -m scripts.build_factor_dashboard
 uv run python -m scripts.build_factor_model
 uv run python -m scripts.build_event_returns --benchmarks QQQ SOXX SMH
 uv run python -m scripts.build_event_reviews
+uv run python -m scripts.build_valuation
 uv run python -m scripts.build_evidence
 uv run python -m scripts.ingest_valuation
 uv run python -m scripts.build_forward_analysis
@@ -195,8 +219,10 @@ uv run python -m scripts.run_event_study --event-type earnings --window-before 5
 ## Next Implementation Steps
 
 1. Add a single-process pipeline runner to avoid DuckDB writer lock conflicts.
-2. Add valuation evidence cards so the memo can distinguish good companies from
-   attractive setups.
-3. Add a TSM-specific FX model with USD/TWD after validating the current
+2. Add a TSM-specific FX model with USD/TWD after validating the current
    QQQ/SOXX/10Y residual layer.
-4. Add an IV monitor table and adapter after choosing an options data source.
+3. Add a catalyst calendar for earnings, TSMC monthly revenue, product events, and
+   export-control/regulatory windows.
+4. Add residual concentration diagnostics to separate persistent residual strength from
+   one-day event spikes.
+5. Add an IV monitor table and adapter after choosing an options data source.

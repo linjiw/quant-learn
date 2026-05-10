@@ -26,12 +26,14 @@ The first version is deliberately a research system, not an auto-trading system.
 13. PIT-safe `fundamentals_quarterly_normalized` snapshots with cash-flow lineage
 14. `cash_flow_features` for CapEx / OCF and FCF margin evidence
 15. PIT three-factor residual model using `QQQ + SOXX + Δ10Y bps`
-16. `evidence_cards` synthesized from event, segment, cash-flow, and factor layers
-17. `research_stance` and `reports/decision_memo.md` with falsifiers and caveats
-18. Stance audit tables and `reports/stance_audit_report.md` for score contributions,
+16. PIT trailing valuation metrics and valuation features
+17. `evidence_cards` synthesized from event, segment, cash-flow, factor, and
+    valuation layers
+18. `research_stance` and `reports/decision_memo.md` with falsifiers and caveats
+19. Stance audit tables and `reports/stance_audit_report.md` for score contributions,
     confidence caps, and conflict flags
-19. Audit-driven stance modifiers such as `factor_led`, `factor_conflicted`,
-    `mixed_cash_flow`, and `data_quality_capped`
+20. Audit-driven stance modifiers such as `factor_led`, `factor_conflicted`,
+    `mixed_cash_flow`, `valuation_capped`, and `data_quality_capped`
 
 For the design rationale and table definitions, see `docs/system_design.md`.
 For the current loophole audit, see `docs/strategy_loopholes.md`.
@@ -153,15 +155,20 @@ at `t-1`, then applied to date `t` returns.
 Generate evidence cards, research stance, and the decision memo:
 
 ```bash
+uv run python -m scripts.build_valuation
 uv run python -m scripts.build_evidence
 ```
 
-`evidence_cards` converts event reviews, segment features, cash-flow features, and
-factor residuals into source-linked evidence rows. `research_stance` turns those rows
-into a research stance with confidence caps, stance modifiers, falsifiers, next
-catalysts, and data-quality caveats. It also writes stance audit tables for component
-contribution, confidence-cap lineage, and explicit conflict flags. The output is a
-research memo, not a buy/sell instruction.
+`build_valuation` creates PIT trailing valuation metrics and valuation features from
+available fundamentals and prices. For TSM, where normalized ADR fundamentals are
+incomplete, the system can use the latest `valuation_snapshots` row as a low-confidence
+current-screening fallback and marks those features as `snapshot_fallback`.
+`evidence_cards` converts event reviews, segment features, cash-flow features, factor
+residuals, and valuation features into source-linked evidence rows. `research_stance`
+turns those rows into a research stance with confidence caps, stance modifiers,
+falsifiers, next catalysts, and data-quality caveats. It also writes stance audit tables
+for component contribution, confidence-cap lineage, and explicit conflict flags. The
+output is a research memo, not a buy/sell instruction.
 
 Generate the visual research report:
 

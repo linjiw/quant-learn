@@ -16,7 +16,7 @@ from quant_learn.config import EXPORT_DIR, ensure_directories
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Build V1.0 evidence cards, research stance, and decision memo.",
+        description="Build evidence cards, research stance, and decision memo.",
     )
     parser.add_argument("--as-of-date", default=None)
     parser.add_argument("--memo", default="reports/decision_memo.md")

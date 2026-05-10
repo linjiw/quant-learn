@@ -390,6 +390,56 @@ SCHEMA_SQL = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS valuation_metrics (
+        valuation_metric_id TEXT NOT NULL,
+        date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        market_cap DOUBLE,
+        enterprise_value DOUBLE,
+        price DOUBLE,
+        shares_outstanding DOUBLE,
+        cash DOUBLE,
+        debt DOUBLE,
+        ttm_revenue DOUBLE,
+        ttm_gross_profit DOUBLE,
+        ttm_operating_income DOUBLE,
+        ttm_net_income DOUBLE,
+        ttm_free_cash_flow DOUBLE,
+        pe_ttm DOUBLE,
+        ev_sales_ttm DOUBLE,
+        ev_gross_profit_ttm DOUBLE,
+        ev_operating_income_ttm DOUBLE,
+        fcf_yield_ttm DOUBLE,
+        earnings_yield_ttm DOUBLE,
+        revenue_growth_yoy DOUBLE,
+        gross_profit_growth_yoy DOUBLE,
+        fcf_growth_yoy DOUBLE,
+        valuation_percentile_1y DOUBLE,
+        valuation_percentile_3y DOUBLE,
+        valuation_percentile_5y DOUBLE,
+        data_quality_flag TEXT,
+        source_fundamental_ids TEXT,
+        created_at TIMESTAMP NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (valuation_metric_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS valuation_features (
+        date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        feature_name TEXT NOT NULL,
+        feature_value DOUBLE,
+        feature_score DOUBLE,
+        direction TEXT,
+        confidence DOUBLE,
+        source_metric_ids TEXT,
+        data_quality_flag TEXT,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (date, ticker, feature_name)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS forward_price_estimates (
         as_of_date DATE NOT NULL,
         ticker TEXT NOT NULL,

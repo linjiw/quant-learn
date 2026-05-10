@@ -1,19 +1,19 @@
 # AI Compute Four-Stock Decision Memo
 
-as_of_date: 2026-05-08
+as_of_date: 2026-05-09
 
 ## Executive Summary
 
 | Ticker | Stance | Modifier | Confidence | Main caveat | One-line thesis |
 |---|---|---|---:|---|---|
-| AMD | strong_constructive | factor_led | 0.70 | needs non-factor confirmation | AMD upside depends on becoming a credible second supplier in AI accelerators while sustaining EPYC/Data Center moment... |
-| GOOGL | neutral | mixed_cash_flow | 0.75 | cash-flow evidence is mixed | GOOGL remains a high-quality AI/Cloud compounder if Search resilience and Cloud margin expansion can offset AI CapEx ... |
-| NVDA | constructive | factor_conflicted | 0.70 | negative factor-residual conflict | NVDA retains AI compute platform leadership if Data Center growth, gross margin, and supply visibility remain strong.... |
-| TSM | constructive | data_quality_capped | 0.65 | missing cash-flow evidence caps confidence | TSM remains the manufacturing bottleneck of AI compute if monthly revenue momentum, HPC mix, advanced node mix, and m... |
+| AMD | constructive | valuation_capped+mixed | 0.70 | valuation evidence caps upside | AMD upside depends on becoming a credible second supplier in AI accelerators while sustaining EPYC/Data Center moment... |
+| GOOGL | neutral | mixed_cash_flow+mixed | 0.70 | cash-flow evidence is mixed | GOOGL remains a high-quality AI/Cloud compounder if Search resilience and Cloud margin expansion can offset AI CapEx ... |
+| NVDA | constructive | valuation_capped+factor_conflicted+mixed | 0.70 | valuation evidence caps upside | NVDA retains AI compute platform leadership if Data Center growth, gross margin, and supply visibility remain strong.... |
+| TSM | neutral | data_quality_capped+mixed | 0.65 | missing cash-flow evidence caps confidence | TSM remains the manufacturing bottleneck of AI compute if monthly revenue momentum, HPC mix, advanced node mix, and m... |
 
 ## Cross-Stock Read
 
-- Constructive evidence currently clusters around: AMD, NVDA, TSM.
+- Constructive evidence currently clusters around: AMD, NVDA.
 - Cautious/high-risk evidence currently clusters around: none.
 - Positive factor residual leadership: GOOGL, AMD.
 - Negative factor residual pressure: NVDA, TSM.
@@ -23,11 +23,11 @@ as_of_date: 2026-05-08
 
 ### Stance
 
-neutral / mixed_cash_flow (confidence 0.75)
+neutral / mixed_cash_flow+mixed (confidence 0.70)
 
 ### Thesis
 
-GOOGL remains a high-quality AI/Cloud compounder if Search resilience and Cloud margin expansion can offset AI CapEx pressure. Current stance is neutral with net evidence score 9.6. GOOGL cash-flow feature fcf_margin is positive with value 0.092.; GOOGL cash-flow feature capex_to_ocf is negative with value 0.779.
+GOOGL remains a high-quality AI/Cloud compounder if Search resilience and Cloud margin expansion can offset AI CapEx pressure. Current stance is neutral with net evidence score -6.8. GOOGL cash-flow feature fcf_margin is positive with value 0.092.; GOOGL cash-flow feature capex_to_ocf is negative with value 0.779.
 
 ### Positive Evidence
 
@@ -40,10 +40,10 @@ GOOGL remains a high-quality AI/Cloud compounder if Search resilience and Cloud 
 ### Negative / Mixed Evidence
 
 - GOOGL cash-flow feature capex_to_ocf is negative with value 0.779. (strength high, confidence 0.90)
+- GOOGL valuation feature valuation_percentile_score is negative with score 0.0. (strength very_high, confidence 0.75)
+- GOOGL valuation feature capex_adjusted_fcf_score is negative with score 28.9. (strength high, confidence 0.75)
 - GOOGL fcf_quality_score is negative with score 9.2. (strength very_high, confidence 0.90)
 - GOOGL other_bets_margin is negative with score 0.0. (strength very_high, confidence 0.90)
-- GOOGL capex_pressure_score is negative with score 22.1. (strength high, confidence 0.90)
-- GOOGL event reaction evidence for googl_earnings_2026_02_04: The reaction looks negative versus the pre-event factor model. (strength high, confidence 0.82)
 
 ### Mixed Evidence
 
@@ -52,7 +52,7 @@ GOOGL remains a high-quality AI/Cloud compounder if Search resilience and Cloud 
 
 ### Risk Flags
 
-capex_pressure; negative_driver; margin_pressure
+capex_pressure; valuation_risk; negative_driver
 
 ### Falsifiers
 
@@ -70,30 +70,31 @@ capex_pressure; negative_driver; margin_pressure
 
 ### Data Quality Caveats
 
-positive and negative evidence are both material
+positive and negative evidence are both material; negative valuation evidence caps high-confidence positive stance
 
 
 ## NVDA
 
 ### Stance
 
-constructive / factor_conflicted (confidence 0.70)
+constructive / valuation_capped+factor_conflicted+mixed (confidence 0.70)
 
 ### Thesis
 
-NVDA retains AI compute platform leadership if Data Center growth, gross margin, and supply visibility remain strong. Current stance is constructive with net evidence score 11.7. NVDA factor residual evidence is negative: 20d -8.6%, 60d -11.1%.; NVDA cash-flow feature capex_to_ocf is positive with value 0.035.
+NVDA retains AI compute platform leadership if Data Center growth, gross margin, and supply visibility remain strong. Current stance is constructive with net evidence score 13.0. NVDA factor residual evidence is negative: 20d -8.6%, 60d -11.1%.; NVDA valuation feature growth_adjusted_valuation_score is positive with score 100.0.
 
 ### Positive Evidence
 
+- NVDA valuation feature growth_adjusted_valuation_score is positive with score 100.0. (strength very_high, confidence 0.75)
 - NVDA cash-flow feature capex_to_ocf is positive with value 0.035. (strength very_high, confidence 0.80)
 - NVDA oem_and_other_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
 - NVDA professional_visualization_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
 - NVDA data_center_revenue_growth_yoy is positive with score 100.0. (strength very_high, confidence 0.90)
-- NVDA ai_end_market_breadth_score is positive with score 87.3. (strength very_high, confidence 0.90)
 
 ### Negative / Mixed Evidence
 
 - NVDA factor residual evidence is negative: 20d -8.6%, 60d -11.1%. (strength high, confidence 0.80)
+- NVDA valuation feature ev_sales_score is negative with score 20.7. (strength high, confidence 0.75)
 - NVDA event reaction evidence for nvda_earnings_2026_02_25: The reaction looks negative versus the pre-event factor model. (strength medium, confidence 0.88)
 - NVDA event reaction evidence for nvda_earnings_2025_02_26: The reaction looks negative versus the pre-event factor model. (strength medium, confidence 0.88)
 
@@ -107,7 +108,7 @@ NVDA retains AI compute platform leadership if Data Center growth, gross margin,
 
 ### Risk Flags
 
-NVDA factor residual evidence is negative: 20d -8.6%, 60d -11.1%.; NVDA event reaction evidence for nvda_earnings_2026_02_25: The reaction looks negative versus the pre-event factor model.; NVDA event reaction evidence for nvda_earnings_2025_02_26: The reaction looks negative versus the pre-event factor model.
+NVDA factor residual evidence is negative: 20d -8.6%, 60d -11.1%.; valuation_risk; NVDA event reaction evidence for nvda_earnings_2026_02_25: The reaction looks negative versus the pre-event factor model.; NVDA event reaction evidence for nvda_earnings_2025_02_26: The reaction looks negative versus the pre-event factor model.
 
 ### Falsifiers
 
@@ -126,18 +127,18 @@ NVDA factor residual evidence is negative: 20d -8.6%, 60d -11.1%.; NVDA event re
 
 ### Data Quality Caveats
 
-multiple data-quality issues cap confidence
+multiple data-quality issues cap confidence; positive and negative evidence are both material; negative valuation evidence caps high-confidence positive stance
 
 
 ## AMD
 
 ### Stance
 
-strong_constructive / factor_led (confidence 0.70)
+constructive / valuation_capped+mixed (confidence 0.70)
 
 ### Thesis
 
-AMD upside depends on becoming a credible second supplier in AI accelerators while sustaining EPYC/Data Center momentum. Current stance is strong_constructive with net evidence score 29.8. AMD factor residual evidence is positive: 20d 28.0%, 60d 54.3%.; AMD cash-flow feature capex_to_ocf is positive with value 0.132.
+AMD upside depends on becoming a credible second supplier in AI accelerators while sustaining EPYC/Data Center momentum. Current stance is constructive with net evidence score 10.5. AMD factor residual evidence is positive: 20d 28.0%, 60d 54.3%.; AMD valuation feature valuation_percentile_score is negative with score 0.0.
 
 ### Positive Evidence
 
@@ -149,11 +150,11 @@ AMD upside depends on becoming a credible second supplier in AI accelerators whi
 
 ### Negative / Mixed Evidence
 
+- AMD valuation feature valuation_percentile_score is negative with score 0.0. (strength very_high, confidence 0.75)
 - AMD operating_margin_quality_score is negative with score 14.4. (strength very_high, confidence 0.90)
 - AMD data_center_margin is negative with score 27.7. (strength high, confidence 0.70)
 - AMD client_and_gaming_margin is negative with score 16.0. (strength high, confidence 0.70)
 - AMD data_center_margin_score is negative with score 27.7. (strength high, confidence 0.70)
-- AMD event reaction evidence for amd_earnings_2026_02_03: The reaction looks negative versus the pre-event factor model. (strength very_high, confidence 0.85)
 
 ### Mixed Evidence
 
@@ -165,7 +166,7 @@ AMD upside depends on becoming a credible second supplier in AI accelerators whi
 
 ### Risk Flags
 
-margin_pressure
+valuation_risk; margin_pressure
 
 ### Falsifiers
 
@@ -183,18 +184,18 @@ margin_pressure
 
 ### Data Quality Caveats
 
-multiple data-quality issues cap confidence
+multiple data-quality issues cap confidence; positive and negative evidence are both material; negative valuation evidence caps high-confidence positive stance
 
 
 ## TSM
 
 ### Stance
 
-constructive / data_quality_capped (confidence 0.65)
+neutral / data_quality_capped+mixed (confidence 0.65)
 
 ### Thesis
 
-TSM remains the manufacturing bottleneck of AI compute if monthly revenue momentum, HPC mix, advanced node mix, and margin quality remain strong. Current stance is constructive with net evidence score 10.1. TSM advanced_node_mix_score is positive with score 74.0.; TSM factor residual evidence is negative: 20d -13.7%, 60d -24.0%. Confidence is capped for missing FX/geopolitical factor.
+TSM remains the manufacturing bottleneck of AI compute if monthly revenue momentum, HPC mix, advanced node mix, and margin quality remain strong. Current stance is neutral with net evidence score 3.0. TSM advanced_node_mix_score is positive with score 74.0.; TSM factor residual evidence is negative: 20d -13.7%, 60d -24.0%. Confidence is capped for missing FX/geopolitical factor.
 
 ### Positive Evidence
 
@@ -203,6 +204,7 @@ TSM remains the manufacturing bottleneck of AI compute if monthly revenue moment
 ### Negative / Mixed Evidence
 
 - TSM factor residual evidence is negative: 20d -13.7%, 60d -24.0%. Confidence is capped for missing FX/geopolitical factor. (strength very_high, confidence 0.60)
+- TSM valuation feature snapshot_pe_score is negative with score 28.0. (strength high, confidence 0.45)
 - TSM event reaction evidence for tsmc_monthly_revenue_2026_03: The reaction looks negative versus the pre-event factor model. (strength high, confidence 0.85)
 - TSM event reaction evidence for tsm_earnings_2026_04_15: The reaction looks negative versus the pre-event factor model. (strength high, confidence 0.85)
 - TSM event reaction evidence for tsm_earnings_2025_10_15: The reaction looks negative versus the pre-event factor model. (strength high, confidence 0.85)
@@ -217,7 +219,7 @@ TSM remains the manufacturing bottleneck of AI compute if monthly revenue moment
 
 ### Risk Flags
 
-fx_model_gap; TSM event reaction evidence for tsmc_monthly_revenue_2026_03: The reaction looks negative versus the pre-event factor model.; TSM event reaction evidence for tsm_earnings_2026_04_15: The reaction looks negative versus the pre-event factor model.; TSM event reaction evidence for tsm_earnings_2025_10_15: The reaction looks negative versus the pre-event factor model.
+fx_model_gap; valuation_risk; TSM event reaction evidence for tsmc_monthly_revenue_2026_03: The reaction looks negative versus the pre-event factor model.; TSM event reaction evidence for tsm_earnings_2026_04_15: The reaction looks negative versus the pre-event factor model.
 
 ### Falsifiers
 
@@ -236,4 +238,4 @@ fx_model_gap; TSM event reaction evidence for tsmc_monthly_revenue_2026_03: The 
 
 ### Data Quality Caveats
 
-missing cash-flow evidence caps confidence; multiple data-quality issues cap confidence; TSM factor evidence is capped until USD/TWD is added to the model
+missing cash-flow evidence caps confidence; multiple data-quality issues cap confidence; positive and negative evidence are both material; negative valuation evidence caps high-confidence positive stance; TSM factor evidence is capped until USD/TWD is added to the model

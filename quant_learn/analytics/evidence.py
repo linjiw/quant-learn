@@ -93,31 +93,35 @@ STANCE_CONFLICT_COLUMNS = [
 
 EVIDENCE_TYPE_WEIGHTS = {
     "GOOGL": {
-        "segment_momentum": 0.30,
-        "cash_flow_quality": 0.30,
-        "event_reaction": 0.15,
-        "factor_residual": 0.15,
+        "segment_momentum": 0.25,
+        "cash_flow_quality": 0.25,
+        "valuation": 0.20,
+        "event_reaction": 0.10,
+        "factor_residual": 0.10,
         "risk": 0.10,
     },
     "NVDA": {
-        "segment_momentum": 0.35,
-        "event_reaction": 0.20,
-        "factor_residual": 0.20,
-        "risk": 0.15,
-        "cash_flow_quality": 0.10,
+        "segment_momentum": 0.30,
+        "valuation": 0.20,
+        "event_reaction": 0.15,
+        "factor_residual": 0.15,
+        "risk": 0.12,
+        "cash_flow_quality": 0.08,
     },
     "AMD": {
-        "segment_momentum": 0.30,
-        "factor_residual": 0.25,
-        "event_reaction": 0.20,
-        "risk": 0.15,
+        "segment_momentum": 0.25,
+        "factor_residual": 0.20,
+        "valuation": 0.20,
+        "event_reaction": 0.15,
+        "risk": 0.10,
         "cash_flow_quality": 0.10,
     },
     "TSM": {
-        "segment_momentum": 0.35,
-        "cash_flow_quality": 0.20,
-        "factor_residual": 0.20,
-        "risk": 0.15,
+        "segment_momentum": 0.30,
+        "cash_flow_quality": 0.15,
+        "factor_residual": 0.15,
+        "valuation": 0.20,
+        "risk": 0.10,
         "event_reaction": 0.10,
     },
 }
@@ -208,12 +212,14 @@ CONFIDENCE_CAP_VALUES = {
     "missing_segment_evidence": 0.65,
     "missing_cash_flow_evidence": 0.75,
     "missing_factor_evidence": 0.75,
+    "missing_valuation_evidence": 0.80,
     "data_quality_issues": 0.70,
     "conflicting_evidence": 0.75,
     "tsm_fx_model_gap": 0.65,
     "missing_non_factor_positive_evidence": 0.70,
     "factor_dominated_positive_evidence": 0.70,
     "insufficient_non_factor_positive_confirmation": 0.70,
+    "negative_valuation_evidence": 0.70,
 }
 
 CONFIDENCE_CAP_REASONS = {
@@ -221,6 +227,7 @@ CONFIDENCE_CAP_REASONS = {
     "missing_segment_evidence": "missing segment evidence prevents strong constructive stance",
     "missing_cash_flow_evidence": "missing cash-flow evidence caps confidence",
     "missing_factor_evidence": "missing factor residual evidence caps confidence",
+    "missing_valuation_evidence": "missing valuation evidence leaves price discipline unresolved",
     "data_quality_issues": "multiple data-quality issues cap confidence",
     "conflicting_evidence": "positive and negative evidence are both material",
     "tsm_fx_model_gap": "TSM factor evidence is capped until USD/TWD is added to the model",
@@ -232,6 +239,9 @@ CONFIDENCE_CAP_REASONS = {
     ),
     "insufficient_non_factor_positive_confirmation": (
         "strong constructive stance requires at least two non-factor positive evidence types"
+    ),
+    "negative_valuation_evidence": (
+        "negative valuation evidence caps high-confidence positive stance"
     ),
 }
 
@@ -245,6 +255,7 @@ def build_evidence_cards(as_of_date: Optional[str] = None) -> pd.DataFrame:
         event_returns = conn.execute("SELECT * FROM event_returns").fetchdf()
         segment_features = conn.execute("SELECT * FROM segment_features").fetchdf()
         cash_flow_features = conn.execute("SELECT * FROM cash_flow_features").fetchdf()
+        valuation_features = conn.execute("SELECT * FROM valuation_features").fetchdf()
         factor_residuals = conn.execute(
             """
             SELECT
@@ -269,12 +280,14 @@ def build_evidence_cards(as_of_date: Optional[str] = None) -> pd.DataFrame:
         event_reviews,
         segment_features,
         cash_flow_features,
+        valuation_features,
         factor_residuals,
     )
     created_at = utc_now_naive()
     cards.extend(_event_evidence(event_reviews, event_returns, effective_as_of, created_at))
     cards.extend(_segment_evidence(segment_features, effective_as_of, created_at))
     cards.extend(_cash_flow_evidence(cash_flow_features, effective_as_of, created_at))
+    cards.extend(_valuation_evidence(valuation_features, effective_as_of, created_at))
     cards.extend(_factor_evidence(factor_residuals, effective_as_of, created_at))
 
     if not cards:
@@ -667,6 +680,48 @@ def _cash_flow_evidence(cash_flow_features: pd.DataFrame, as_of_date, created_at
     return rows
 
 
+def _valuation_evidence(valuation_features: pd.DataFrame, as_of_date, created_at) -> list[dict]:
+    if valuation_features.empty:
+        return []
+    rows = []
+    latest = (
+        valuation_features.sort_values("date")
+        .groupby(["ticker", "feature_name"], dropna=False)
+        .tail(1)
+    )
+    for _, feature in latest.iterrows():
+        direction = str(feature.get("direction") or "neutral")
+        if direction == "neutral":
+            continue
+        score = feature.get("feature_score")
+        materiality = _score_materiality(score)
+        rows.append(
+            _evidence_row(
+                as_of_date=as_of_date,
+                ticker=feature["ticker"],
+                evidence_type="valuation",
+                source_table="valuation_features",
+                source_id=str(feature.get("source_metric_ids") or ""),
+                source_date=feature["date"],
+                available_date=feature["date"],
+                direction=direction,
+                strength=_strength_from_materiality(materiality, [0.20, 0.40, 0.70]),
+                confidence=float(feature.get("confidence") or 0.6),
+                materiality=materiality,
+                summary=_valuation_summary(feature, direction),
+                metric_name=feature["feature_name"],
+                metric_value=feature.get("feature_value"),
+                comparison_value=score,
+                interpretation=f"Valuation feature score {score:.1f}.",
+                thesis_tag="valuation_discipline",
+                risk_tag="valuation_risk" if direction == "negative" else None,
+                data_quality_flag=feature.get("data_quality_flag"),
+                created_at=created_at,
+            )
+        )
+    return rows
+
+
 def _factor_evidence(factor_residuals: pd.DataFrame, as_of_date, created_at) -> list[dict]:
     if factor_residuals.empty:
         return []
@@ -793,6 +848,9 @@ def _confidence_caps(
     if "factor_residual" not in evidence_types:
         caps.append("missing_factor_evidence")
         caveats.append("missing factor residual evidence caps confidence")
+    if "valuation" not in evidence_types:
+        caps.append("missing_valuation_evidence")
+        caveats.append("missing valuation evidence leaves price discipline unresolved")
     data_issues = evidence[
         evidence["data_quality_flag"].fillna("complete").isin(
             ["incomplete", "data_issue", "insufficient_observations"]
@@ -804,6 +862,10 @@ def _confidence_caps(
     if positive_score >= 15 and negative_score >= 15:
         caps.append("conflicting_evidence")
         caveats.append("positive and negative evidence are both material")
+    negative_valuation = _material_evidence(evidence, "valuation", "negative")
+    if not negative_valuation.empty and positive_score >= 20:
+        caps.append("negative_valuation_evidence")
+        caveats.append("negative valuation evidence caps high-confidence positive stance")
     non_factor_positive = evidence[
         (evidence["direction"] == "positive")
         & (evidence["evidence_type"] != "factor_residual")
@@ -836,7 +898,7 @@ def _confidence_caps(
 
 def _stance_confidence(evidence: pd.DataFrame, caps: list[str]) -> float:
     avg_confidence = float(evidence["confidence"].dropna().mean()) if not evidence.empty else 0.35
-    coverage_score = min(1.0, evidence["evidence_type"].nunique() / 4.0)
+    coverage_score = min(1.0, evidence["evidence_type"].nunique() / 5.0)
     issue_rate = float(
         evidence["data_quality_flag"].fillna("complete").isin(["incomplete", "data_issue"]).mean()
     )
@@ -870,6 +932,8 @@ def _apply_stance_caps(stance: str, caps: list[str]) -> str:
         stance = "constructive"
     if "factor_dominated_positive_evidence" in caps and stance == "strong_constructive":
         stance = "constructive"
+    if "negative_valuation_evidence" in caps and stance == "strong_constructive":
+        stance = "constructive"
     if "limited_evidence" in caps and stance in {"strong_constructive", "constructive"}:
         stance = "neutral"
     if "conflicting_evidence" in caps and stance == "strong_constructive":
@@ -885,6 +949,8 @@ def _stance_modifier(
 ) -> str:
     positive_stance = stance in {"constructive", "strong_constructive"}
     negative_factor = _material_evidence(scored, "factor_residual", "negative")
+    positive_valuation = _material_evidence(scored, "valuation", "positive")
+    negative_valuation = _material_evidence(scored, "valuation", "negative")
     positive_factor_share = _positive_factor_share(
         scored,
         scored.loc[scored["direction"] == "positive", "weighted_score"].sum(),
@@ -892,23 +958,30 @@ def _stance_modifier(
     has_positive_cash = not _material_evidence(scored, "cash_flow_quality", "positive").empty
     has_negative_cash = not _material_evidence(scored, "cash_flow_quality", "negative").empty
 
+    modifiers = []
+    if positive_stance and not negative_valuation.empty:
+        modifiers.append("valuation_capped")
     if positive_stance and positive_factor_share >= FACTOR_LED_MODIFIER_THRESHOLD:
-        return "factor_led"
+        modifiers.append("factor_led")
     if ticker == "TSM" and (
         "tsm_fx_model_gap" in caps
         or "missing_cash_flow_evidence" in caps
         or "data_quality_issues" in caps
     ):
-        return "data_quality_capped"
+        modifiers.append("data_quality_capped")
     if positive_stance and not negative_factor.empty:
-        return "factor_conflicted"
+        modifiers.append("factor_conflicted")
+    if not positive_stance and not positive_valuation.empty and negative_valuation.empty:
+        modifiers.append("valuation_supported")
+    if "missing_valuation_evidence" in caps:
+        modifiers.append("valuation_unknown")
     if has_positive_cash and has_negative_cash:
-        return "mixed_cash_flow"
+        modifiers.append("mixed_cash_flow")
     if "conflicting_evidence" in caps:
-        return "mixed"
-    if caps:
-        return "capped"
-    return "clean"
+        modifiers.append("mixed")
+    if caps and not modifiers:
+        modifiers.append("capped")
+    return "+".join(dict.fromkeys(modifiers)) if modifiers else "clean"
 
 
 def _empty_stance_row(ticker: str, as_of_date, created_at) -> dict:
@@ -1016,6 +1089,8 @@ def _conflict_rows(
     negative_factor = _material_evidence(scored, "factor_residual", "negative")
     positive_cash = _material_evidence(scored, "cash_flow_quality", "positive")
     negative_cash = _material_evidence(scored, "cash_flow_quality", "negative")
+    positive_valuation = _material_evidence(scored, "valuation", "positive")
+    negative_valuation = _material_evidence(scored, "valuation", "negative")
     positive_factor_score = _positive_factor_score(scored)
     positive_non_factor_score = float(
         scored[
@@ -1059,6 +1134,58 @@ def _conflict_rows(
                     f"{ticker} positive stance is materially supported by factor "
                     "residual evidence; audit non-factor confirmation before raising "
                     "confidence."
+                ),
+                created_at,
+            )
+        )
+
+    if stance in {"constructive", "strong_constructive"} and not negative_valuation.empty:
+        rows.append(
+            _conflict_row(
+                as_of_date,
+                ticker,
+                "positive_stance_negative_valuation",
+                _top_ids(scored[scored["direction"] == "positive"]),
+                _top_ids(negative_valuation),
+                "high" if _max_strength(negative_valuation) >= 0.75 else "medium",
+                (
+                    f"{ticker} has a positive stance, but valuation evidence is "
+                    "negative. Treat upside as valuation-capped until price or "
+                    "fundamentals improve."
+                ),
+                created_at,
+            )
+        )
+
+    if not positive_factor.empty and not negative_valuation.empty:
+        rows.append(
+            _conflict_row(
+                as_of_date,
+                ticker,
+                "positive_factor_negative_valuation",
+                _top_ids(positive_factor),
+                _top_ids(negative_valuation),
+                "medium",
+                (
+                    f"{ticker} has positive factor residual evidence but negative "
+                    "valuation evidence."
+                ),
+                created_at,
+            )
+        )
+
+    if not positive_valuation.empty and not negative_factor.empty:
+        rows.append(
+            _conflict_row(
+                as_of_date,
+                ticker,
+                "positive_valuation_negative_factor",
+                _top_ids(positive_valuation),
+                _top_ids(negative_factor),
+                "medium",
+                (
+                    f"{ticker} has positive valuation evidence but negative factor "
+                    "residual evidence."
                 ),
                 created_at,
             )
@@ -1581,6 +1708,13 @@ def _cash_flow_summary(feature: pd.Series, direction: str) -> str:
     )
 
 
+def _valuation_summary(feature: pd.Series, direction: str) -> str:
+    return (
+        f"{feature['ticker']} valuation feature {feature['feature_name']} is {direction} "
+        f"with score {float(feature['feature_score']):.1f}."
+    )
+
+
 def _factor_summary(row: pd.Series, direction: str) -> str:
     caveat = (
         " Confidence is capped for missing FX/geopolitical factor."
@@ -1654,9 +1788,13 @@ def _list_or_none(values: list[str]) -> str:
 
 def _main_caveat(row: pd.Series) -> str:
     modifier = _clean_text(row.get("stance_modifier"))
+    modifiers = modifier.split("+") if modifier else []
     caveats = _clean_text(row.get("data_quality_caveats"))
     risk_flags = _clean_text(row.get("risk_flags"))
     modifier_caveats = {
+        "valuation_capped": "valuation evidence caps upside",
+        "valuation_supported": "valuation evidence supports setup",
+        "valuation_unknown": "valuation evidence missing",
         "factor_led": "needs non-factor confirmation",
         "factor_conflicted": "negative factor-residual conflict",
         "mixed_cash_flow": "cash-flow evidence is mixed",
@@ -1664,8 +1802,9 @@ def _main_caveat(row: pd.Series) -> str:
         "capped": caveats.split("; ", 1)[0] if caveats else "confidence capped",
         "mixed": caveats.split("; ", 1)[0] if caveats else "mixed evidence",
     }
-    if modifier in modifier_caveats:
-        return _short(modifier_caveats[modifier], 80)
+    for item in modifiers:
+        if item in modifier_caveats:
+            return _short(modifier_caveats[item], 80)
     if caveats:
         return _short(caveats.split("; ", 1)[0], 80)
     if modifier and modifier != "clean":

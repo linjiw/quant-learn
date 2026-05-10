@@ -55,13 +55,19 @@ flowchart LR
 `factor_residuals`
 : Daily decomposition of actual return into expected return and residual return using PIT rolling exposures. Use `residual_return_20d` and `residual_return_60d` to check whether recent strength is company-specific after Nasdaq, semiconductor, and rate moves.
 
+`valuation_features`
+: Price-discipline features built from PIT trailing valuation metrics. Use them to ask
+whether good operating evidence is already reflected in the stock. TSM can use a
+low-confidence `snapshot_fallback` feature when normalized ADR fundamentals are
+incomplete.
+
 `evidence_cards`
 : Source-linked evidence rows. Direction says whether the evidence supports or hurts the
 current thesis; strength says how large the signal is; confidence says how reliable the
 system thinks the evidence is. Do not treat one evidence card as a decision.
 
 `research_stance`
-: The per-ticker synthesis layer. It combines event, segment, cash-flow, and factor
+: The per-ticker synthesis layer. It combines event, segment, cash-flow, factor, and valuation
 evidence with ticker-specific weights, confidence caps, and stance modifiers. Stance is
 a research view, not a trading command.
 
@@ -86,7 +92,9 @@ accepting a stance as reasonable.
 7. Use `event_reviews.data_quality_flag` to separate completed event windows from incomplete ones, especially for very recent events.
 8. Use `segment_features` to connect the market reaction back to company operating drivers.
 9. Use `factor_residuals` to confirm whether the move survived QQQ/SOXX/rate attribution.
-10. Use `evidence_cards` to audit what the system is using as proof.
-11. Use `research_stance` and `reports/decision_memo.md` only after checking the caveats and falsifiers.
-12. Use `reports/stance_audit_report.md` to verify that a stance is not dominated by one evidence type or hiding a material conflict.
-13. Treat `factor_led` as upside that needs non-factor confirmation and `factor_conflicted` as a positive stance that is not momentum-confirmed.
+10. Use `valuation_features` to check whether the setup is valuation-supported,
+valuation-capped, or still valuation-unknown.
+11. Use `evidence_cards` to audit what the system is using as proof.
+12. Use `research_stance` and `reports/decision_memo.md` only after checking the caveats and falsifiers.
+13. Use `reports/stance_audit_report.md` to verify that a stance is not dominated by one evidence type or hiding a material conflict.
+14. Treat `factor_led` as upside that needs non-factor confirmation, `factor_conflicted` as a positive stance that is not momentum-confirmed, and `valuation_capped` as a setup where good company evidence may already be priced in.
