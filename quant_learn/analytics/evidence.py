@@ -53,6 +53,43 @@ STANCE_COLUMNS = [
     "ingested_at",
 ]
 
+STANCE_COMPONENT_COLUMNS = [
+    "as_of_date",
+    "ticker",
+    "evidence_type",
+    "direction",
+    "weighted_score",
+    "raw_strength",
+    "avg_confidence",
+    "evidence_count",
+    "top_evidence_ids",
+    "created_at",
+    "ingested_at",
+]
+
+STANCE_CAP_COLUMNS = [
+    "as_of_date",
+    "ticker",
+    "cap_type",
+    "cap_value",
+    "reason",
+    "applied",
+    "created_at",
+    "ingested_at",
+]
+
+STANCE_CONFLICT_COLUMNS = [
+    "as_of_date",
+    "ticker",
+    "conflict_type",
+    "positive_evidence_ids",
+    "negative_evidence_ids",
+    "severity",
+    "summary",
+    "created_at",
+    "ingested_at",
+]
+
 EVIDENCE_TYPE_WEIGHTS = {
     "GOOGL": {
         "segment_momentum": 0.30,
@@ -162,6 +199,30 @@ NEXT_CATALYSTS = {
 STRENGTH_VALUES = {"low": 0.25, "medium": 0.50, "high": 0.75, "very_high": 1.00}
 STANCE_ORDER = ["high_risk", "cautious", "neutral", "constructive", "strong_constructive"]
 
+CONFIDENCE_CAP_VALUES = {
+    "limited_evidence": 0.55,
+    "missing_segment_evidence": 0.65,
+    "missing_cash_flow_evidence": 0.75,
+    "missing_factor_evidence": 0.75,
+    "data_quality_issues": 0.70,
+    "conflicting_evidence": 0.75,
+    "tsm_fx_model_gap": 0.65,
+    "missing_non_factor_positive_evidence": 0.70,
+}
+
+CONFIDENCE_CAP_REASONS = {
+    "limited_evidence": "limited evidence coverage caps confidence",
+    "missing_segment_evidence": "missing segment evidence prevents strong constructive stance",
+    "missing_cash_flow_evidence": "missing cash-flow evidence caps confidence",
+    "missing_factor_evidence": "missing factor residual evidence caps confidence",
+    "data_quality_issues": "multiple data-quality issues cap confidence",
+    "conflicting_evidence": "positive and negative evidence are both material",
+    "tsm_fx_model_gap": "TSM factor evidence is capped until USD/TWD is added to the model",
+    "missing_non_factor_positive_evidence": (
+        "strong constructive stance requires positive non-factor evidence"
+    ),
+}
+
 
 def build_evidence_cards(as_of_date: Optional[str] = None) -> pd.DataFrame:
     """Build evidence cards from event, segment, cash-flow, and factor layers."""
@@ -252,6 +313,99 @@ def store_research_stance(research_stance: pd.DataFrame) -> int:
         return upsert_dataframe(conn, research_stance, "research_stance", ["stance_id"])
 
 
+def build_stance_audit_tables(
+    as_of_date: Optional[str] = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Build stance component, confidence-cap, and conflict audit tables."""
+
+    initialize_database()
+    with connect() as conn:
+        evidence = conn.execute("SELECT * FROM evidence_cards").fetchdf()
+        stance = conn.execute("SELECT * FROM research_stance").fetchdf()
+
+    if evidence.empty:
+        return (
+            pd.DataFrame(columns=STANCE_COMPONENT_COLUMNS),
+            pd.DataFrame(columns=STANCE_CAP_COLUMNS),
+            pd.DataFrame(columns=STANCE_CONFLICT_COLUMNS),
+        )
+
+    evidence["source_date"] = pd.to_datetime(evidence["source_date"], errors="coerce")
+    effective_as_of = _as_of_date(as_of_date, evidence, stance)
+    created_at = utc_now_naive()
+    component_rows = []
+    cap_rows = []
+    conflict_rows = []
+    stance_by_ticker = stance.set_index("ticker") if not stance.empty else pd.DataFrame()
+
+    for ticker in CORE_TICKERS:
+        ticker_evidence = evidence[evidence["ticker"] == ticker].copy()
+        if ticker_evidence.empty:
+            continue
+        scored = _score_evidence_for_ticker(ticker, ticker_evidence, effective_as_of)
+        positive_score = scored.loc[scored["direction"] == "positive", "weighted_score"].sum()
+        negative_score = -scored.loc[
+            scored["direction"] == "negative",
+            "weighted_score",
+        ].sum()
+        caps, _ = _confidence_caps(ticker, scored, positive_score, negative_score)
+        stance_value = (
+            str(stance_by_ticker.loc[ticker, "stance"])
+            if not stance_by_ticker.empty and ticker in stance_by_ticker.index
+            else _apply_stance_caps(_stance_from_score(positive_score - negative_score), caps)
+        )
+        component_rows.extend(_component_rows(ticker, scored, effective_as_of, created_at))
+        cap_rows.extend(_cap_rows(ticker, caps, effective_as_of, created_at))
+        conflict_rows.extend(
+            _conflict_rows(ticker, scored, stance_value, effective_as_of, created_at)
+        )
+
+    return (
+        pd.DataFrame(component_rows, columns=STANCE_COMPONENT_COLUMNS),
+        pd.DataFrame(cap_rows, columns=STANCE_CAP_COLUMNS),
+        pd.DataFrame(conflict_rows, columns=STANCE_CONFLICT_COLUMNS),
+    )
+
+
+def store_stance_audit_tables(
+    components: pd.DataFrame,
+    caps: pd.DataFrame,
+    conflicts: pd.DataFrame,
+) -> tuple[int, int, int]:
+    """Store stance audit tables as a full rebuild."""
+
+    initialize_database()
+    with connect() as conn:
+        conn.execute("DELETE FROM stance_components")
+        conn.execute("DELETE FROM stance_confidence_caps")
+        conn.execute("DELETE FROM stance_conflicts")
+        component_count = 0
+        cap_count = 0
+        conflict_count = 0
+        if not components.empty:
+            component_count = upsert_dataframe(
+                conn,
+                components,
+                "stance_components",
+                ["as_of_date", "ticker", "evidence_type", "direction"],
+            )
+        if not caps.empty:
+            cap_count = upsert_dataframe(
+                conn,
+                caps,
+                "stance_confidence_caps",
+                ["as_of_date", "ticker", "cap_type"],
+            )
+        if not conflicts.empty:
+            conflict_count = upsert_dataframe(
+                conn,
+                conflicts,
+                "stance_conflicts",
+                ["as_of_date", "ticker", "conflict_type"],
+            )
+    return component_count, cap_count, conflict_count
+
+
 def build_decision_memo(output_path: Path) -> Path:
     """Write the AI compute four-stock decision memo."""
 
@@ -285,6 +439,66 @@ def build_decision_memo(output_path: Path) -> Path:
         if row.empty:
             continue
         lines.extend(_ticker_section(row.iloc[0], evidence_by_id))
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+    return output_path
+
+
+def build_stance_audit_report(output_path: Path) -> Path:
+    """Write a stance audit report with scoring components, caps, and conflicts."""
+
+    initialize_database()
+    with connect() as conn:
+        stance = conn.execute("SELECT * FROM research_stance ORDER BY ticker").fetchdf()
+        evidence = conn.execute("SELECT * FROM evidence_cards").fetchdf()
+        components = conn.execute(
+            "SELECT * FROM stance_components ORDER BY ticker, evidence_type, direction"
+        ).fetchdf()
+        caps = conn.execute(
+            "SELECT * FROM stance_confidence_caps ORDER BY ticker, cap_type"
+        ).fetchdf()
+        conflicts = conn.execute(
+            "SELECT * FROM stance_conflicts ORDER BY ticker, severity, conflict_type"
+        ).fetchdf()
+
+    lines = ["# Stance Audit Report", ""]
+    if stance.empty:
+        lines.append("No research stance rows are available yet.")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("\n".join(lines), encoding="utf-8")
+        return output_path
+
+    evidence_by_id = evidence.set_index("evidence_id") if not evidence.empty else pd.DataFrame()
+    as_of = pd.to_datetime(stance["as_of_date"]).max().date()
+    lines.extend([f"as_of_date: {as_of}", ""])
+    lines.extend(
+        [
+            "This report audits how `research_stance` was produced. It is designed to "
+            "find overconfident outputs, missing evidence categories, and conflicts "
+            "between operating evidence and factor residual evidence.",
+            "",
+        ]
+    )
+
+    for ticker in CORE_TICKERS:
+        row = stance[stance["ticker"] == ticker]
+        if row.empty:
+            continue
+        ticker_components = components[components["ticker"] == ticker]
+        ticker_caps = caps[caps["ticker"] == ticker]
+        ticker_conflicts = conflicts[conflicts["ticker"] == ticker]
+        ticker_evidence = evidence[evidence["ticker"] == ticker]
+        lines.extend(
+            _audit_ticker_section(
+                row.iloc[0],
+                ticker_components,
+                ticker_caps,
+                ticker_conflicts,
+                ticker_evidence,
+                evidence_by_id,
+            )
+        )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("\n".join(lines), encoding="utf-8")
@@ -576,6 +790,14 @@ def _confidence_caps(
     if positive_score >= 15 and negative_score >= 15:
         caps.append("conflicting_evidence")
         caveats.append("positive and negative evidence are both material")
+    non_factor_positive = evidence[
+        (evidence["direction"] == "positive")
+        & (evidence["evidence_type"] != "factor_residual")
+    ]
+    positive_factor_score = _positive_factor_score(evidence)
+    if positive_factor_score >= 15 and non_factor_positive.empty:
+        caps.append("missing_non_factor_positive_evidence")
+        caveats.append("strong constructive stance requires positive non-factor evidence")
     if ticker == "TSM":
         caps.append("tsm_fx_model_gap")
         caveats.append("TSM factor evidence is capped until USD/TWD is added to the model")
@@ -589,17 +811,8 @@ def _stance_confidence(evidence: pd.DataFrame, caps: list[str]) -> float:
         evidence["data_quality_flag"].fillna("complete").isin(["incomplete", "data_issue"]).mean()
     )
     confidence = avg_confidence * 0.70 + coverage_score * 0.25 + (1.0 - issue_rate) * 0.05
-    cap_values = {
-        "limited_evidence": 0.55,
-        "missing_segment_evidence": 0.65,
-        "missing_cash_flow_evidence": 0.75,
-        "missing_factor_evidence": 0.75,
-        "data_quality_issues": 0.70,
-        "conflicting_evidence": 0.75,
-        "tsm_fx_model_gap": 0.65,
-    }
     for cap in caps:
-        confidence = min(confidence, cap_values.get(cap, confidence))
+        confidence = min(confidence, CONFIDENCE_CAP_VALUES.get(cap, confidence))
     return _bounded_confidence(confidence)
 
 
@@ -617,6 +830,8 @@ def _stance_from_score(net_score: float) -> str:
 
 def _apply_stance_caps(stance: str, caps: list[str]) -> str:
     if "missing_segment_evidence" in caps and stance == "strong_constructive":
+        stance = "constructive"
+    if "missing_non_factor_positive_evidence" in caps and stance == "strong_constructive":
         stance = "constructive"
     if "limited_evidence" in caps and stance in {"strong_constructive", "constructive"}:
         stance = "neutral"
@@ -667,6 +882,257 @@ def _risk_flags(scored: pd.DataFrame) -> list[str]:
     if not flags:
         flags.append("no major negative evidence from current evidence set")
     return list(dict.fromkeys(flags))
+
+
+def _component_rows(ticker: str, scored: pd.DataFrame, as_of_date, created_at) -> list[dict]:
+    rows = []
+    grouped = scored.groupby(["evidence_type", "direction"], dropna=False)
+    for (evidence_type, direction), group in grouped:
+        top_ids = (
+            group.sort_values("abs_weighted_score", ascending=False)["evidence_id"]
+            .head(5)
+            .astype(str)
+            .tolist()
+        )
+        rows.append(
+            {
+                "as_of_date": as_of_date,
+                "ticker": ticker,
+                "evidence_type": evidence_type,
+                "direction": direction,
+                "weighted_score": float(group["weighted_score"].sum()),
+                "raw_strength": float(group["strength_value"].mean()),
+                "avg_confidence": float(group["confidence"].fillna(0.5).mean()),
+                "evidence_count": int(len(group)),
+                "top_evidence_ids": ",".join(top_ids),
+                "created_at": created_at,
+                "ingested_at": created_at,
+            }
+        )
+    return rows
+
+
+def _cap_rows(ticker: str, caps: list[str], as_of_date, created_at) -> list[dict]:
+    rows = []
+    for cap in caps:
+        rows.append(
+            {
+                "as_of_date": as_of_date,
+                "ticker": ticker,
+                "cap_type": cap,
+                "cap_value": CONFIDENCE_CAP_VALUES.get(cap),
+                "reason": CONFIDENCE_CAP_REASONS.get(cap, cap),
+                "applied": True,
+                "created_at": created_at,
+                "ingested_at": created_at,
+            }
+        )
+    return rows
+
+
+def _conflict_rows(
+    ticker: str,
+    scored: pd.DataFrame,
+    stance: str,
+    as_of_date,
+    created_at,
+) -> list[dict]:
+    rows = []
+    positive_segment = _material_evidence(scored, "segment_momentum", "positive")
+    negative_segment = _material_evidence(scored, "segment_momentum", "negative")
+    positive_factor = _material_evidence(scored, "factor_residual", "positive")
+    negative_factor = _material_evidence(scored, "factor_residual", "negative")
+    positive_cash = _material_evidence(scored, "cash_flow_quality", "positive")
+    negative_cash = _material_evidence(scored, "cash_flow_quality", "negative")
+    positive_factor_score = _positive_factor_score(scored)
+    positive_non_factor_score = float(
+        scored[
+            (scored["direction"] == "positive")
+            & (scored["evidence_type"] != "factor_residual")
+        ]["weighted_score"].sum()
+    )
+
+    if stance in {"constructive", "strong_constructive"} and not negative_factor.empty:
+        rows.append(
+            _conflict_row(
+                as_of_date,
+                ticker,
+                "positive_stance_negative_factor_residual",
+                _top_ids(scored[scored["direction"] == "positive"]),
+                _top_ids(negative_factor),
+                "high" if _max_strength(negative_factor) >= 0.75 else "medium",
+                (
+                    f"{ticker} has a positive stance, but factor residual evidence is "
+                    "negative. Treat the stance as conflicted until residual pressure "
+                    "or operating evidence resolves."
+                ),
+                created_at,
+            )
+        )
+
+    if (
+        stance in {"constructive", "strong_constructive"}
+        and not positive_factor.empty
+        and positive_factor_score >= positive_non_factor_score
+    ):
+        rows.append(
+            _conflict_row(
+                as_of_date,
+                ticker,
+                "factor_dominated_positive_stance",
+                _top_ids(positive_factor),
+                _top_ids(scored[scored["direction"] == "negative"]),
+                "medium",
+                (
+                    f"{ticker} positive stance is materially supported by factor "
+                    "residual evidence; audit non-factor confirmation before raising "
+                    "confidence."
+                ),
+                created_at,
+            )
+        )
+
+    if not positive_segment.empty and not negative_factor.empty:
+        rows.append(
+            _conflict_row(
+                as_of_date,
+                ticker,
+                "positive_segment_negative_factor",
+                _top_ids(positive_segment),
+                _top_ids(negative_factor),
+                "high" if _max_strength(negative_factor) >= 0.75 else "medium",
+                (
+                    f"{ticker} has positive company-driver evidence but negative "
+                    "factor residual evidence."
+                ),
+                created_at,
+            )
+        )
+
+    if not positive_factor.empty and negative_segment.empty and positive_segment.empty:
+        rows.append(
+            _conflict_row(
+                as_of_date,
+                ticker,
+                "positive_residual_missing_segment_support",
+                _top_ids(positive_factor),
+                "",
+                "medium",
+                (
+                    f"{ticker} has positive factor residual evidence without positive "
+                    "segment support."
+                ),
+                created_at,
+            )
+        )
+
+    if not positive_factor.empty and not negative_segment.empty:
+        rows.append(
+            _conflict_row(
+                as_of_date,
+                ticker,
+                "positive_factor_negative_segment",
+                _top_ids(positive_factor),
+                _top_ids(negative_segment),
+                "high" if _max_strength(negative_segment) >= 0.75 else "medium",
+                (
+                    f"{ticker} has positive residual evidence but negative segment "
+                    "driver evidence."
+                ),
+                created_at,
+            )
+        )
+
+    if not positive_segment.empty and not negative_cash.empty:
+        rows.append(
+            _conflict_row(
+                as_of_date,
+                ticker,
+                "positive_segment_negative_cash_flow",
+                _top_ids(positive_segment),
+                _top_ids(negative_cash),
+                "medium",
+                (
+                    f"{ticker} has positive operating-driver evidence but negative "
+                    "cash-flow evidence."
+                ),
+                created_at,
+            )
+        )
+
+    if not positive_cash.empty and not negative_segment.empty:
+        rows.append(
+            _conflict_row(
+                as_of_date,
+                ticker,
+                "positive_cash_flow_negative_segment",
+                _top_ids(positive_cash),
+                _top_ids(negative_segment),
+                "medium",
+                (
+                    f"{ticker} has positive cash-flow evidence but negative segment "
+                    "driver evidence."
+                ),
+                created_at,
+            )
+        )
+    return rows
+
+
+def _conflict_row(
+    as_of_date,
+    ticker: str,
+    conflict_type: str,
+    positive_ids: str,
+    negative_ids: str,
+    severity: str,
+    summary: str,
+    created_at,
+) -> dict:
+    return {
+        "as_of_date": as_of_date,
+        "ticker": ticker,
+        "conflict_type": conflict_type,
+        "positive_evidence_ids": positive_ids,
+        "negative_evidence_ids": negative_ids,
+        "severity": severity,
+        "summary": summary,
+        "created_at": created_at,
+        "ingested_at": created_at,
+    }
+
+
+def _material_evidence(scored: pd.DataFrame, evidence_type: str, direction: str) -> pd.DataFrame:
+    return scored[
+        (scored["evidence_type"] == evidence_type)
+        & (scored["direction"] == direction)
+        & (scored["strength_value"] >= 0.50)
+    ]
+
+
+def _top_ids(frame: pd.DataFrame, limit: int = 5) -> str:
+    if frame.empty:
+        return ""
+    return ",".join(
+        frame.sort_values("abs_weighted_score", ascending=False)["evidence_id"]
+        .head(limit)
+        .astype(str)
+        .tolist()
+    )
+
+
+def _max_strength(frame: pd.DataFrame) -> float:
+    if frame.empty:
+        return 0.0
+    return float(frame["strength_value"].max())
+
+
+def _positive_factor_score(scored: pd.DataFrame) -> float:
+    rows = scored[
+        (scored["direction"] == "positive")
+        & (scored["evidence_type"] == "factor_residual")
+    ]
+    return float(rows["weighted_score"].sum()) if not rows.empty else 0.0
 
 
 def _thesis_summary(ticker: str, stance: str, net_score: float, scored: pd.DataFrame) -> str:
@@ -748,6 +1214,98 @@ def _ticker_section(row: pd.Series, evidence_by_id: pd.DataFrame) -> list[str]:
     lines.extend(
         ["", "### Data Quality Caveats", "", _value_or_none(row.get("data_quality_caveats")), ""]
     )
+    return lines
+
+
+def _audit_ticker_section(
+    row: pd.Series,
+    components: pd.DataFrame,
+    caps: pd.DataFrame,
+    conflicts: pd.DataFrame,
+    ticker_evidence: pd.DataFrame,
+    evidence_by_id: pd.DataFrame,
+) -> list[str]:
+    ticker = row["ticker"]
+    net_score = float(components["weighted_score"].sum()) if not components.empty else 0.0
+    lines = [
+        f"## {ticker}",
+        "",
+        f"- Stance: {row['stance']}",
+        f"- Confidence: {float(row['confidence']):.2f}",
+        f"- Net weighted score: {net_score:.1f}",
+        "",
+        "### Evidence Count By Type",
+        "",
+    ]
+    lines.extend(_audit_count_table(ticker_evidence))
+    lines.extend(["", "### Score Contribution By Type", ""])
+    lines.extend(_audit_component_table(components))
+    lines.extend(["", "### Confidence Caps Applied", ""])
+    lines.extend(_audit_cap_table(caps))
+    lines.extend(["", "### Conflicts", ""])
+    lines.extend(_audit_conflict_bullets(conflicts))
+    lines.extend(["", "### Top Positive Evidence", ""])
+    lines.extend(_evidence_bullets(row.get("positive_evidence_ids"), evidence_by_id))
+    lines.extend(["", "### Top Negative Evidence", ""])
+    lines.extend(_evidence_bullets(row.get("negative_evidence_ids"), evidence_by_id))
+    lines.extend(["", "### Final Stance Explanation", "", str(row["thesis_summary"]), ""])
+    return lines
+
+
+def _audit_count_table(ticker_evidence: pd.DataFrame) -> list[str]:
+    lines = ["| Evidence type | Direction | Count |", "|---|---|---:|"]
+    if ticker_evidence.empty:
+        lines.append("| none | none | 0 |")
+        return lines
+    counts = (
+        ticker_evidence.groupby(["evidence_type", "direction"], dropna=False)
+        .size()
+        .reset_index(name="count")
+        .sort_values(["evidence_type", "direction"])
+    )
+    for _, row in counts.iterrows():
+        lines.append(f"| {row['evidence_type']} | {row['direction']} | {int(row['count'])} |")
+    return lines
+
+
+def _audit_component_table(components: pd.DataFrame) -> list[str]:
+    lines = [
+        "| Evidence type | Direction | Weighted score | Avg confidence | Count |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    if components.empty:
+        lines.append("| none | none | 0.0 | 0.00 | 0 |")
+        return lines
+    for _, row in components.sort_values("weighted_score", ascending=False).iterrows():
+        lines.append(
+            f"| {row['evidence_type']} | {row['direction']} | "
+            f"{float(row['weighted_score']):.1f} | "
+            f"{float(row['avg_confidence']):.2f} | {int(row['evidence_count'])} |"
+        )
+    return lines
+
+
+def _audit_cap_table(caps: pd.DataFrame) -> list[str]:
+    lines = ["| Cap type | Cap value | Reason |", "|---|---:|---|"]
+    if caps.empty:
+        lines.append("| none | n/a | none |")
+        return lines
+    for _, row in caps.iterrows():
+        lines.append(
+            f"| {row['cap_type']} | {float(row['cap_value']):.2f} | {row['reason']} |"
+        )
+    return lines
+
+
+def _audit_conflict_bullets(conflicts: pd.DataFrame) -> list[str]:
+    if conflicts.empty:
+        return ["- none"]
+    lines = []
+    severity_rank = {"high": 0, "medium": 1, "low": 2}
+    ranked = conflicts.copy()
+    ranked["_rank"] = ranked["severity"].map(severity_rank).fillna(9)
+    for _, row in ranked.sort_values(["_rank", "conflict_type"]).iterrows():
+        lines.append(f"- {row['severity']}: {row['summary']}")
     return lines
 
 

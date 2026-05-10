@@ -310,6 +310,49 @@ SCHEMA_SQL = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS stance_components (
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        evidence_type TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        weighted_score DOUBLE,
+        raw_strength DOUBLE,
+        avg_confidence DOUBLE,
+        evidence_count INTEGER,
+        top_evidence_ids TEXT,
+        created_at TIMESTAMP NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (as_of_date, ticker, evidence_type, direction)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS stance_confidence_caps (
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        cap_type TEXT NOT NULL,
+        cap_value DOUBLE,
+        reason TEXT,
+        applied BOOLEAN,
+        created_at TIMESTAMP NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (as_of_date, ticker, cap_type)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS stance_conflicts (
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        conflict_type TEXT NOT NULL,
+        positive_evidence_ids TEXT,
+        negative_evidence_ids TEXT,
+        severity TEXT,
+        summary TEXT,
+        created_at TIMESTAMP NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (as_of_date, ticker, conflict_type)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS signals (
         date DATE NOT NULL,
         ticker TEXT NOT NULL,

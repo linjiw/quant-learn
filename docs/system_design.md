@@ -108,6 +108,20 @@ confidence, materiality, thesis/risk tags, data-quality flags, and source lineag
 Confidence is capped when evidence coverage is thin, segment/cash-flow/factor evidence
 is missing, data-quality issues are material, or TSM factor evidence lacks an FX factor.
 
+`stance_components`
+: Audit table that decomposes each stance by evidence type and direction. It records
+weighted score contribution, average confidence, evidence count, and top evidence IDs.
+
+`stance_confidence_caps`
+: Applied confidence caps with cap value and reason. This makes it clear when a stance
+is confidence-limited by missing evidence, data-quality issues, conflicting evidence, or
+the TSM FX-model gap.
+
+`stance_conflicts`
+: Explicit evidence conflicts such as positive segment evidence with negative factor
+residual evidence, factor-dominated positive stance, and positive cash flow with negative
+segment evidence.
+
 `valuation_snapshots`
 : Current valuation multiples from yfinance. Treat these as screening data and verify important values against primary filings or a paid data source.
 
@@ -137,7 +151,12 @@ Every stance includes positive evidence, negative/mixed evidence, falsifiers, ne
 catalysts, and data-quality caveats. A high-confidence stance requires enough evidence
 coverage.
 
-6. Single writer
+6. Audit before expansion
+: Stance outputs are audited through `stance_components`, `stance_confidence_caps`, and
+`stance_conflicts` before adding new model layers. This prevents a plausible memo from
+hiding evidence imbalance or factor/operating-driver conflicts.
+
+7. Single writer
 : DuckDB supports many reads but only one writer at a time. Run ingestion scripts sequentially when writing to the same database file.
 
 ## Implemented CLI

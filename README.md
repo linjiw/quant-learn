@@ -28,6 +28,8 @@ The first version is deliberately a research system, not an auto-trading system.
 15. PIT three-factor residual model using `QQQ + SOXX + Δ10Y bps`
 16. `evidence_cards` synthesized from event, segment, cash-flow, and factor layers
 17. `research_stance` and `reports/decision_memo.md` with falsifiers and caveats
+18. Stance audit tables and `reports/stance_audit_report.md` for score contributions,
+    confidence caps, and conflict flags
 
 For the design rationale and table definitions, see `docs/system_design.md`.
 For the current loophole audit, see `docs/strategy_loopholes.md`.
@@ -155,7 +157,9 @@ uv run python -m scripts.build_evidence
 `evidence_cards` converts event reviews, segment features, cash-flow features, and
 factor residuals into source-linked evidence rows. `research_stance` turns those rows
 into a research stance with confidence caps, falsifiers, next catalysts, and data-quality
-caveats. The output is a research memo, not a buy/sell instruction.
+caveats. It also writes stance audit tables for component contribution, confidence-cap
+lineage, and explicit conflict flags. The output is a research memo, not a buy/sell
+instruction.
 
 Generate the visual research report:
 

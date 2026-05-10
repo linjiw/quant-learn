@@ -2,6 +2,7 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
+import pytest
 
 from quant_learn.analytics import evidence
 from quant_learn.db import initialize_database
@@ -87,6 +88,111 @@ def test_decision_memo_contains_all_four_tickers_and_falsifiers(
         assert f"## {ticker}" in memo
     assert "### Falsifiers" in memo
     assert "Stance is research output only" in memo
+
+
+def test_stance_components_sum_to_net_score(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "components.duckdb"
+    _patch_evidence_db(monkeypatch, db_path)
+    _seed_full_evidence_fixture(db_path)
+
+    cards = evidence.build_evidence_cards(as_of_date="2026-02-10")
+    evidence.store_evidence_cards(cards)
+    stance = evidence.build_research_stance(as_of_date="2026-02-10")
+    evidence.store_research_stance(stance)
+    components, caps, conflicts = evidence.build_stance_audit_tables(
+        as_of_date="2026-02-10",
+    )
+
+    amd_cards = cards[cards["ticker"] == "AMD"].copy()
+    amd_cards["source_date"] = pd.to_datetime(amd_cards["source_date"], errors="coerce")
+    scored = evidence._score_evidence_for_ticker(  # noqa: SLF001
+        "AMD",
+        amd_cards,
+        pd.Timestamp("2026-02-10").date(),
+    )
+    component_sum = components[components["ticker"] == "AMD"]["weighted_score"].sum()
+
+    assert component_sum == _approx(scored["weighted_score"].sum())
+    assert not caps.empty
+    assert not conflicts.empty
+
+
+def test_confidence_caps_are_recorded_when_applied(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "cap_audit.duckdb"
+    _patch_evidence_db(monkeypatch, db_path)
+    _seed_factor_only_fixture(db_path)
+
+    cards = evidence.build_evidence_cards(as_of_date="2026-02-10")
+    evidence.store_evidence_cards(cards)
+    evidence.store_research_stance(evidence.build_research_stance(as_of_date="2026-02-10"))
+    _, caps, _ = evidence.build_stance_audit_tables(as_of_date="2026-02-10")
+    amd_caps = set(caps[caps["ticker"] == "AMD"]["cap_type"])
+
+    assert "limited_evidence" in amd_caps
+    assert "missing_segment_evidence" in amd_caps
+    assert "missing_cash_flow_evidence" in amd_caps
+    assert "missing_non_factor_positive_evidence" in amd_caps
+
+
+def test_tsm_constructive_confidence_capped_by_fx_gap(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "tsm_fx_cap.duckdb"
+    _patch_evidence_db(monkeypatch, db_path)
+    _seed_full_evidence_fixture(db_path)
+
+    cards = evidence.build_evidence_cards(as_of_date="2026-02-10")
+    evidence.store_evidence_cards(cards)
+    stance = evidence.build_research_stance(as_of_date="2026-02-10")
+    evidence.store_research_stance(stance)
+    _, caps, _ = evidence.build_stance_audit_tables(as_of_date="2026-02-10")
+    tsm = stance[stance["ticker"] == "TSM"].iloc[0]
+
+    assert tsm["confidence"] <= 0.65
+    assert "tsm_fx_model_gap" in set(caps[caps["ticker"] == "TSM"]["cap_type"])
+
+
+def test_positive_stance_with_negative_factor_residual_sets_conflict_flag(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "conflict.duckdb"
+    _patch_evidence_db(monkeypatch, db_path)
+    cards = _direct_conflicted_constructive_evidence()
+
+    evidence.store_evidence_cards(cards)
+    stance = evidence.build_research_stance(as_of_date="2026-02-10")
+    evidence.store_research_stance(stance)
+    _, _, conflicts = evidence.build_stance_audit_tables(as_of_date="2026-02-10")
+    nvda = stance[stance["ticker"] == "NVDA"].iloc[0]
+
+    assert nvda["stance"] in {"constructive", "strong_constructive"}
+    assert "positive_stance_negative_factor_residual" in set(conflicts["conflict_type"])
+    assert "positive_segment_negative_factor" in set(conflicts["conflict_type"])
+
+
+def test_stance_audit_report_contains_all_four_tickers(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "audit_report.duckdb"
+    _patch_evidence_db(monkeypatch, db_path)
+    _seed_full_evidence_fixture(db_path)
+
+    cards = evidence.build_evidence_cards(as_of_date="2026-02-10")
+    evidence.store_evidence_cards(cards)
+    stance = evidence.build_research_stance(as_of_date="2026-02-10")
+    evidence.store_research_stance(stance)
+    evidence.store_stance_audit_tables(
+        *evidence.build_stance_audit_tables(as_of_date="2026-02-10")
+    )
+    output_path = tmp_path / "stance_audit_report.md"
+
+    evidence.build_stance_audit_report(output_path)
+    report = output_path.read_text(encoding="utf-8")
+
+    for ticker in ("GOOGL", "NVDA", "AMD", "TSM"):
+        assert f"## {ticker}" in report
+    assert "### Score Contribution By Type" in report
+    assert "### Confidence Caps Applied" in report
 
 
 def _patch_evidence_db(monkeypatch, db_path: Path) -> None:
@@ -324,6 +430,92 @@ def _direct_evidence_cards_without_segment_or_cash() -> pd.DataFrame:
     return pd.DataFrame(rows)[evidence.EVIDENCE_COLUMNS]
 
 
+def _direct_conflicted_constructive_evidence() -> pd.DataFrame:
+    created_at = utc_now_naive()
+    rows = [
+        _evidence_fixture_row(
+            "nvda_segment_positive",
+            "NVDA",
+            "segment_momentum",
+            "positive",
+            "very_high",
+            0.90,
+            "NVDA segment momentum is strongly positive.",
+            "data_center_momentum_score",
+        ),
+        _evidence_fixture_row(
+            "nvda_event_positive",
+            "NVDA",
+            "event_reaction",
+            "positive",
+            "very_high",
+            0.90,
+            "NVDA event reaction is strongly positive.",
+            "factor_model_abnormal_0_p5",
+        ),
+        _evidence_fixture_row(
+            "nvda_cash_positive",
+            "NVDA",
+            "cash_flow_quality",
+            "positive",
+            "high",
+            0.85,
+            "NVDA cash-flow evidence is positive.",
+            "fcf_margin",
+        ),
+        _evidence_fixture_row(
+            "nvda_factor_negative",
+            "NVDA",
+            "factor_residual",
+            "negative",
+            "high",
+            0.80,
+            "NVDA factor residual evidence is negative.",
+            "residual_return_60d",
+            risk_tag="factor_residual_pressure",
+        ),
+    ]
+    frame = pd.DataFrame(rows)
+    frame["created_at"] = created_at
+    frame["ingested_at"] = created_at
+    return frame[evidence.EVIDENCE_COLUMNS]
+
+
+def _evidence_fixture_row(
+    evidence_id: str,
+    ticker: str,
+    evidence_type: str,
+    direction: str,
+    strength: str,
+    confidence: float,
+    summary: str,
+    metric_name: str,
+    risk_tag: str | None = None,
+) -> dict:
+    return {
+        "evidence_id": evidence_id,
+        "as_of_date": pd.Timestamp("2026-02-10").date(),
+        "ticker": ticker,
+        "evidence_type": evidence_type,
+        "source_table": "fixture",
+        "source_id": evidence_id,
+        "source_date": pd.Timestamp("2026-02-01").date(),
+        "available_date": pd.Timestamp("2026-02-01").date(),
+        "direction": direction,
+        "strength": strength,
+        "confidence": confidence,
+        "materiality": 0.20,
+        "summary": summary,
+        "metric_name": metric_name,
+        "metric_value": 0.20,
+        "comparison_value": 0.0,
+        "interpretation": "fixture",
+        "thesis_tag": "fixture",
+        "risk_tag": risk_tag,
+        "data_quality_flag": "complete",
+    }
+
+
 def _segment_feature_name(ticker: str) -> str:
     return {
         "GOOGL": "cloud_growth_score",
@@ -337,3 +529,7 @@ def _insert_df(conn: duckdb.DuckDBPyConnection, table: str, frame: pd.DataFrame)
     conn.register("frame", frame)
     conn.execute(f"INSERT INTO {table} SELECT * FROM frame")
     conn.unregister("frame")
+
+
+def _approx(value: float):
+    return pytest.approx(value, abs=1e-9)

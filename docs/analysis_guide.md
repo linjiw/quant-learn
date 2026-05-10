@@ -70,6 +70,11 @@ not a trading command.
 positive evidence, negative/mixed evidence, risk flags, falsifiers, next catalysts, and
 data-quality caveats.
 
+`reports/stance_audit_report.md`
+: The calibration report for the memo. It shows evidence counts, weighted score
+contribution by type, confidence caps, conflict flags, and top evidence. Use this before
+accepting a stance as reasonable.
+
 ## Practical Interpretation Order
 
 1. Start with cumulative return to see the trend.
@@ -83,3 +88,4 @@ data-quality caveats.
 9. Use `factor_residuals` to confirm whether the move survived QQQ/SOXX/rate attribution.
 10. Use `evidence_cards` to audit what the system is using as proof.
 11. Use `research_stance` and `reports/decision_memo.md` only after checking the caveats and falsifiers.
+12. Use `reports/stance_audit_report.md` to verify that a stance is not dominated by one evidence type or hiding a material conflict.
