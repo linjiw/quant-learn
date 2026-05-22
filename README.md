@@ -36,9 +36,17 @@ The first version is deliberately a research system, not an auto-trading system.
     `mixed_cash_flow`, `valuation_capped`, and `data_quality_capped`
 21. Research auditability tools: `pipeline_runs`, evidence/stance history tables,
     residual concentration diagnostics, and `reports/weekly_digest.md`
+22. AI trusted-execution framework tracker with leading indicators,
+    falsifiable predictions, scenario weights, portfolio bands, and
+    `reports/ai_execution_tracker.md`
 
 For the design rationale and table definitions, see `docs/system_design.md`.
 For the current loophole audit, see `docs/strategy_loopholes.md`.
+For the trusted-execution tracker workflow, see `docs/ai_framework_tracker.md`.
+For the Phase 1 systematic-discretionary strategy workflow, see
+`docs/ai_strategy_system.md`.
+For the daily website refresh and GitHub Pages deployment workflow, see
+`docs/ai_framework_daily_automation.md`.
 
 ## Setup
 
@@ -201,6 +209,14 @@ Generate forward scenario estimates and an investability scorecard:
 ```bash
 uv run python -m scripts.ingest_valuation
 uv run python -m scripts.build_forward_analysis
+```
+
+Generate the AI trusted-execution tracker and decision system:
+
+```bash
+uv run python -m scripts.import_ai_framework
+uv run python -m scripts.build_ai_framework_tracker
+uv run python -m scripts.build_ai_strategy_signals
 ```
 
 Notebook entry points:

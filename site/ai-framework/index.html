@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Trusted Execution Framework</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Framework dashboard</p>
+        <h1>Trusted Execution of Intelligence</h1>
+      </div>
+      <div class="asof" id="asOf"></div>
+    </header>
+
+    <main>
+      <section class="dashboard-grid" aria-label="Portfolio overview">
+        <div class="panel thesis-panel">
+          <p class="section-label">Operating thesis</p>
+          <p id="summaryText" class="summary-text"></p>
+        </div>
+        <div class="panel metric-panel">
+          <span>Total target weight</span>
+          <strong>100%</strong>
+          <p>Cash included as explicit risk-control reserve.</p>
+        </div>
+        <div class="panel metric-panel warning">
+          <span>Highest current alert</span>
+          <strong>Trust</strong>
+          <p>Human review and write-permission evidence remain the gating questions.</p>
+        </div>
+        <div class="panel metric-panel">
+          <span>Investable rows</span>
+          <strong id="holdingCount">0</strong>
+          <p>Basket positions are tracked by individual tickers.</p>
+        </div>
+      </section>
+
+      <p class="disclaimer">
+        Research dashboard only. This is a framework-tracking artifact, not investment, tax,
+        legal, or financial advice.
+      </p>
+
+      <nav class="tabs" role="tablist" aria-label="Dashboard views">
+        <button
+          class="tab active"
+          id="tab-portfolio"
+          role="tab"
+          data-view="portfolio"
+          aria-controls="view-portfolio"
+          aria-selected="true"
+          tabindex="0"
+        >
+          Portfolio
+        </button>
+        <button
+          class="tab"
+          id="tab-control"
+          role="tab"
+          data-view="control"
+          aria-controls="view-control"
+          aria-selected="false"
+          tabindex="-1"
+        >
+          Control rights
+        </button>
+        <button
+          class="tab"
+          id="tab-signals"
+          role="tab"
+          data-view="signals"
+          aria-controls="view-signals"
+          aria-selected="false"
+          tabindex="-1"
+        >
+          Signals
+        </button>
+        <button
+          class="tab"
+          id="tab-research"
+          role="tab"
+          data-view="research"
+          aria-controls="view-research"
+          aria-selected="false"
+          tabindex="-1"
+        >
+          Research notes
+        </button>
+        <button
+          class="tab"
+          id="tab-sources"
+          role="tab"
+          data-view="sources"
+          aria-controls="view-sources"
+          aria-selected="false"
+          tabindex="-1"
+        >
+          Sources
+        </button>
+      </nav>
+
+      <section class="view active" id="view-portfolio" role="tabpanel" aria-labelledby="tab-portfolio">
+        <div class="section-head">
+          <div>
+            <p class="section-label">Holdings</p>
+            <h2>Portfolio as framework instance</h2>
+          </div>
+          <div class="filter-wrap">
+            <label for="layerFilter">Layer</label>
+            <select id="layerFilter">
+              <option value="All">All</option>
+            </select>
+          </div>
+        </div>
+        <div class="holdings-grid" id="holdingsGrid"></div>
+      </section>
+
+      <section class="view" id="view-control" role="tabpanel" aria-labelledby="tab-control" hidden>
+        <div class="section-head">
+          <div>
+            <p class="section-label">Control map</p>
+            <h2>Overlapping control-rights exposure</h2>
+          </div>
+          <p class="muted">Exposure weights intentionally do not sum to 100.</p>
+        </div>
+        <div class="panel chart-panel">
+          <div id="exposureBars"></div>
+        </div>
+        <div class="allocation-grid" id="allocationGrid"></div>
+      </section>
+
+      <section class="view" id="view-signals" role="tabpanel" aria-labelledby="tab-signals" hidden>
+        <div class="section-head">
+          <div>
+            <p class="section-label">Strategy layer</p>
+            <h2>Systematic-discretionary review signals</h2>
+          </div>
+          <p class="muted">No signal here is an automatic trade order.</p>
+        </div>
+        <div class="signal-grid" id="signalGrid"></div>
+        <div class="question-grid" id="questionGrid"></div>
+      </section>
+
+      <section class="view" id="view-research" role="tabpanel" aria-labelledby="tab-research" hidden>
+        <div class="section-head">
+          <div>
+            <p class="section-label">Thesis writing</p>
+            <h2>Research story by stock</h2>
+          </div>
+          <p class="muted">Source-linked, thesis-first notes for review.</p>
+        </div>
+        <article class="research-list" id="researchList"></article>
+      </section>
+
+      <section class="view" id="view-sources" role="tabpanel" aria-labelledby="tab-sources" hidden>
+        <div class="section-head">
+          <div>
+            <p class="section-label">Evidence base</p>
+            <h2>Online sources used</h2>
+          </div>
+          <p class="muted">Facts are paraphrased and linked for audit.</p>
+        </div>
+        <div class="source-list" id="sourceList"></div>
+        <div class="section-head claims-head">
+          <div>
+            <p class="section-label">Claim provenance</p>
+            <h2>Evidence mapped to claims</h2>
+          </div>
+          <p class="muted">Claim-level records make the strongest assumptions easier to audit.</p>
+        </div>
+        <div class="claim-list" id="claimList"></div>
+      </section>
+    </main>
+
+    <script src="./research-data.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

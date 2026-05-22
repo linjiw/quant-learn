@@ -21,6 +21,9 @@ FRESHNESS_TABLES = [
     "valuation_features",
     "evidence_cards",
     "research_stance",
+    "ai_framework_decisions",
+    "ai_control_right_scores",
+    "ai_strategy_signals",
 ]
 
 UPSTREAM_FRESHNESS_TABLES = {"prices", "market_factor_inputs"}

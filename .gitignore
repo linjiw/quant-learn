@@ -11,4 +11,6 @@ data/processed/*.duckdb
 data/processed/*.duckdb.wal
 data/exports/
 reports/history/
+public/
 .env
+.claude/

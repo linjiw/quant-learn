@@ -620,6 +620,143 @@ SCHEMA_SQL = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS ai_framework_indicators (
+        as_of_date DATE NOT NULL,
+        indicator_id TEXT NOT NULL,
+        control_layer TEXT NOT NULL,
+        indicator_name TEXT NOT NULL,
+        indicator_group TEXT,
+        metric_name TEXT,
+        current_value DOUBLE,
+        target_value DOUBLE,
+        warning_value DOUBLE,
+        unit TEXT,
+        direction TEXT NOT NULL,
+        status TEXT,
+        importance_score DOUBLE,
+        confidence DOUBLE,
+        source TEXT,
+        source_url TEXT,
+        notes TEXT,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (as_of_date, indicator_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS ai_framework_predictions (
+        as_of_date DATE NOT NULL,
+        prediction_id TEXT NOT NULL,
+        control_layer TEXT NOT NULL,
+        prediction_text TEXT NOT NULL,
+        deadline DATE,
+        target_metric TEXT,
+        target_threshold TEXT,
+        current_value DOUBLE,
+        unit TEXT,
+        status TEXT,
+        probability DOUBLE,
+        confidence DOUBLE,
+        falsifier TEXT,
+        source TEXT,
+        source_url TEXT,
+        notes TEXT,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (as_of_date, prediction_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS ai_framework_scenarios (
+        as_of_date DATE NOT NULL,
+        scenario_id TEXT NOT NULL,
+        scenario_name TEXT NOT NULL,
+        probability DOUBLE,
+        scenario_type TEXT,
+        thesis_impact TEXT,
+        portfolio_posture TEXT,
+        trigger_indicators TEXT,
+        notes TEXT,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (as_of_date, scenario_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS ai_framework_holdings (
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        holding_name TEXT,
+        bucket TEXT,
+        target_weight DOUBLE,
+        current_weight DOUBLE,
+        min_weight DOUBLE,
+        max_weight DOUBLE,
+        control_layers TEXT,
+        exposure_map TEXT,
+        thesis TEXT,
+        risk_flags TEXT,
+        action_bias TEXT,
+        notes TEXT,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (as_of_date, ticker)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS ai_framework_decisions (
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        holding_name TEXT,
+        bucket TEXT,
+        target_weight DOUBLE,
+        current_weight DOUBLE,
+        suggested_weight DOUBLE,
+        decision_score DOUBLE,
+        thesis_alignment_score DOUBLE,
+        indicator_support_score DOUBLE,
+        prediction_support_score DOUBLE,
+        risk_control_score DOUBLE,
+        decision_label TEXT,
+        rebalance_flag TEXT,
+        rationale TEXT,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (as_of_date, ticker)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS ai_control_right_scores (
+        as_of_date DATE NOT NULL,
+        ticker TEXT NOT NULL,
+        holding_name TEXT,
+        capacity_score DOUBLE,
+        cost_score DOUBLE,
+        authority_score DOUBLE,
+        outcome_score DOUBLE,
+        physical_ai_score DOUBLE,
+        confidence DOUBLE,
+        scoring_method TEXT,
+        source TEXT,
+        notes TEXT,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (as_of_date, ticker)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS ai_strategy_signals (
+        as_of_date DATE NOT NULL,
+        signal_id TEXT NOT NULL,
+        signal_type TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        action_bias TEXT,
+        target_layer TEXT,
+        target_tickers TEXT,
+        source_indicator_ids TEXT,
+        summary TEXT,
+        rationale TEXT,
+        suggested_review TEXT,
+        created_at TIMESTAMP NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (as_of_date, signal_id)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS segment_kpis (
         segment_kpi_id TEXT NOT NULL,
         period_end DATE NOT NULL,
@@ -842,6 +979,7 @@ MIGRATION_SQL = [
     "ALTER TABLE stance_confidence_caps ADD COLUMN IF NOT EXISTS run_id TEXT",
     "ALTER TABLE stance_conflicts ADD COLUMN IF NOT EXISTS run_id TEXT",
     "ALTER TABLE research_stance ADD COLUMN IF NOT EXISTS stance_modifier TEXT",
+    "ALTER TABLE ai_framework_holdings ADD COLUMN IF NOT EXISTS exposure_map TEXT",
     """
     UPDATE evidence_cards
     SET run_id = COALESCE(

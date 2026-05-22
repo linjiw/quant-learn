@@ -1,0 +1,15 @@
+as_of_date,ticker,holding_name,capacity_score,cost_score,authority_score,outcome_score,physical_ai_score,confidence,scoring_method,source,notes
+2026-05-21,MSFT,Microsoft,20,10,90,75,5,0.45,manual_seed,user_framework_seed,Authority control through identity permission audit runtime and enterprise workflow
+2026-05-21,GOOGL,Alphabet,65,70,60,55,10,0.45,manual_seed,user_framework_seed,Full-stack capacity cost model data and workflow exposure
+2026-05-21,NVDA,NVIDIA,95,60,20,15,10,0.45,manual_seed,user_framework_seed,AI factory operating layer rack architecture fabric software and ecosystem
+2026-05-21,AVGO,Broadcom,75,65,10,10,5,0.45,manual_seed,user_framework_seed,Custom silicon networking and hyperscaler internalization proxy
+2026-05-21,TSM,TSMC,90,20,5,5,5,0.45,manual_seed,user_framework_seed,Leading-edge foundry and advanced packaging chokepoint
+2026-05-21,000660.KS,SK Hynix,85,10,0,0,0,0.40,manual_seed,user_framework_seed,HBM4 leadership exposure with Samsung qualification review required
+2026-05-21,CEG,Constellation Energy,65,5,0,0,0,0.35,manual_seed,user_framework_seed,Nodal power exposure with transmission interconnection and regulatory risk
+2026-05-21,VRT,Vertiv,70,10,0,0,5,0.40,manual_seed,user_framework_seed,Data center power and thermal infrastructure capex-cycle exposure
+2026-05-21,MSCI,MSCI,10,10,20,65,0,0.40,manual_seed,user_framework_seed,Financial data index and risk analytics control point
+2026-05-21,MCO,Moody's,5,5,10,85,0,0.40,manual_seed,user_framework_seed,Credit risk verifier and analytics workflow exposure
+2026-05-21,SPGI,S&P Global,5,10,10,80,0,0.40,manual_seed,user_framework_seed,Ratings data analytics and AI infrastructure verifier exposure
+2026-05-21,VEEV,Veeva Systems,5,10,15,85,0,0.40,manual_seed,user_framework_seed,Life sciences workflow verifier exposure
+2026-05-21,TER,Teradyne,65,15,0,10,35,0.40,manual_seed,user_framework_seed,AI semiconductor test core plus robotics optionality
+2026-05-21,CASH,Cash,0,0,0,0,0,1.00,manual_seed,user_framework_seed,Dry powder and risk-control reserve

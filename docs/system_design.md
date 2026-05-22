@@ -167,6 +167,39 @@ and `data_snapshot_hash`. The hash is written into the decision memo for reprodu
 `investment_scorecard`
 : Current setup labels and component scores for investability review.
 
+`ai_framework_indicators`
+: Dated leading-indicator observations for the trusted-execution framework.
+Rows are keyed by `as_of_date` and `indicator_id`, grouped by control layer
+such as capacity, cost, authority, outcome, and meta.
+
+`ai_framework_predictions`
+: Dated falsifiable predictions with deadlines, target thresholds, current
+values, probability estimates, confidence, and explicit falsifiers.
+
+`ai_framework_scenarios`
+: Scenario probability weights and portfolio posture notes. Risk and tail
+scenario probabilities feed the dry-powder decision and risk-control scoring.
+
+`ai_framework_holdings`
+: Research portfolio illustration rows with target/current weights, bands,
+mapped control layers, optional overlapping `exposure_map`, thesis text, risk
+flags, and action bias.
+
+`ai_framework_decisions`
+: Derived decision-support output for the AI framework tracker. It combines
+indicator support, prediction support, thesis alignment, risk control, scenario
+risk, and target bands into a label, suggested weight, and rebalance flag.
+
+`ai_control_right_scores`
+: Dated company-to-control-right score matrix for capacity, cost, authority,
+outcome, and physical AI exposure. This is the Phase 1 bridge from structural
+framework to systematic-discretionary research signals.
+
+`ai_strategy_signals`
+: Non-executional review signals generated from plateau detection, watchlist
+gaps, and mispricing research queues. These rows are alerts for human review,
+not broker orders.
+
 ## Design Choices
 
 1. DuckDB first
@@ -242,6 +275,9 @@ uv run python -m scripts.build_weekly_digest
 uv run python -m scripts.run_pipeline --full
 uv run python -m scripts.ingest_valuation
 uv run python -m scripts.build_forward_analysis
+uv run python -m scripts.import_ai_framework
+uv run python -m scripts.build_ai_framework_tracker
+uv run python -m scripts.build_ai_strategy_signals
 uv run python -m scripts.run_event_study --event-type earnings --window-before 5 --window-after 20
 ```
 
