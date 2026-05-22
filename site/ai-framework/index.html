@@ -103,6 +103,33 @@
       </nav>
 
       <section class="view active" id="view-portfolio" role="tabpanel" aria-labelledby="tab-portfolio">
+        <section class="panel local-portfolio-panel" aria-label="Local portfolio performance">
+          <div class="section-head local-portfolio-head">
+            <div>
+              <p class="section-label">Local tracker</p>
+              <h2>Personal portfolio performance</h2>
+            </div>
+            <p class="muted" id="localPortfolioPrivacy">Local data only. Not included in GitHub Pages builds.</p>
+          </div>
+          <div class="local-status" id="localPortfolioStatus">Checking for local portfolio data...</div>
+          <div class="portfolio-kpis" id="localPortfolioKpis" hidden></div>
+          <div class="portfolio-plot-grid" id="localPortfolioPlots" hidden></div>
+          <div class="portfolio-table-wrap" id="localPortfolioTableWrap" hidden>
+            <table class="portfolio-table">
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>Weight</th>
+                  <th>Price</th>
+                  <th>Value</th>
+                  <th>P/L</th>
+                  <th>Return</th>
+                </tr>
+              </thead>
+              <tbody id="localPortfolioRows"></tbody>
+            </table>
+          </div>
+        </section>
         <div class="section-head">
           <div>
             <p class="section-label">Holdings</p>

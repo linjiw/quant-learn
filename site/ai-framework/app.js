@@ -37,6 +37,17 @@ const severityClass = (value) =>
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9_-]/g, "");
 
+const formatUsd = (value) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2
+  }).format(Number(value ?? 0));
+
+const formatPct = (value) => `${Number(value ?? 0).toFixed(2)}%`;
+
+const signedClass = (value) => (Number(value ?? 0) >= 0 ? "positive" : "negative");
+
 function init() {
   document.getElementById("asOf").textContent = `Data ${data.dataDate} | Reviewed ${data.reviewDate}`;
   document.getElementById("summaryText").textContent = data.summary;
@@ -49,6 +60,7 @@ function init() {
   renderResearch();
   renderSources();
   renderClaims();
+  loadLocalPortfolio();
 }
 
 function setupTabs() {
@@ -286,6 +298,152 @@ function renderClaims() {
       `;
     })
     .join("");
+}
+
+async function loadLocalPortfolio() {
+  try {
+    const response = await fetch("./local-portfolio-data.json", { cache: "no-store" });
+    if (!response.ok) {
+      renderLocalPortfolioMissing();
+      return;
+    }
+    const portfolio = await response.json();
+    renderLocalPortfolio(portfolio);
+  } catch {
+    renderLocalPortfolioMissing();
+  }
+}
+
+function renderLocalPortfolioMissing() {
+  const status = document.getElementById("localPortfolioStatus");
+  status.className = "local-status muted";
+  status.textContent =
+    "No local portfolio ledger found. Run `uv run python -m scripts.update_local_portfolio` from the repo root to initialize the private $1,000 tracker.";
+}
+
+function renderLocalPortfolio(portfolio) {
+  const summary = portfolio.summary || {};
+  const status = document.getElementById("localPortfolioStatus");
+  status.className = "local-status ready";
+  status.textContent = `Updated ${escapeHtml(portfolio.asOfDate)} from local-only data.`;
+
+  const kpis = document.getElementById("localPortfolioKpis");
+  kpis.hidden = false;
+  kpis.innerHTML = [
+    ["Total value", formatUsd(summary.total_value_usd), ""],
+    ["Total P/L", formatUsd(summary.pnl_usd), signedClass(summary.pnl_usd)],
+    ["Return", formatPct(summary.return_pct), signedClass(summary.return_pct)],
+    ["Daily P/L", formatUsd(summary.daily_pnl_usd), signedClass(summary.daily_pnl_usd)],
+    ["Daily return", formatPct(summary.daily_return_pct), signedClass(summary.daily_return_pct)],
+    ["Annualized", formatPct(summary.annualized_return_pct), signedClass(summary.annualized_return_pct)]
+  ]
+    .map(
+      ([label, value, tone]) => `
+        <div class="portfolio-kpi">
+          <span>${escapeHtml(label)}</span>
+          <strong class="${tone}">${escapeHtml(value)}</strong>
+        </div>
+      `
+    )
+    .join("");
+
+  renderLocalPortfolioPlots(portfolio);
+  renderLocalPortfolioTable(portfolio);
+}
+
+function renderLocalPortfolioPlots(portfolio) {
+  const plots = document.getElementById("localPortfolioPlots");
+  plots.hidden = false;
+  const version = encodeURIComponent(portfolio.updatedAtUtc || Date.now());
+  const valuePlot = portfolio.plots?.value;
+  const allocationPlot = portfolio.plots?.allocation;
+  plots.innerHTML = `
+    <figure>
+      <figcaption>Value history</figcaption>
+      ${
+        valuePlot
+          ? `<img src="${escapeHtml(valuePlot)}?v=${version}" alt="Portfolio value history plot" />`
+          : renderInlineValueChart(portfolio.history || [])
+      }
+    </figure>
+    <figure>
+      <figcaption>Current holding values</figcaption>
+      ${
+        allocationPlot
+          ? `<img src="${escapeHtml(allocationPlot)}?v=${version}" alt="Current market value by holding plot" />`
+          : renderInlineAllocationChart(portfolio.holdings || [])
+      }
+    </figure>
+  `;
+}
+
+function renderLocalPortfolioTable(portfolio) {
+  document.getElementById("localPortfolioTableWrap").hidden = false;
+  document.getElementById("localPortfolioRows").innerHTML = (portfolio.holdings || [])
+    .map((holding) => {
+      const pnl = Number(holding.pnl_usd || 0);
+      return `
+        <tr>
+          <td>
+            <strong>${escapeHtml(holding.ticker)}</strong>
+            <span>${escapeHtml(holding.holding_name)}</span>
+          </td>
+          <td>${escapeHtml(holding.target_weight)}%</td>
+          <td>
+            ${formatUsd(holding.price_usd)}
+            <span>${escapeHtml(holding.currency)} ${Number(holding.price_native || 0).toFixed(2)}</span>
+          </td>
+          <td>${formatUsd(holding.market_value_usd)}</td>
+          <td class="${signedClass(pnl)}">${formatUsd(pnl)}</td>
+          <td class="${signedClass(holding.return_pct)}">${formatPct(holding.return_pct)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function renderInlineValueChart(history) {
+  if (!history.length) return `<div class="empty-chart">No history yet</div>`;
+  const width = 720;
+  const height = 260;
+  const padding = 34;
+  const values = history.map((row) => Number(row.total_value_usd || 0));
+  const min = Math.min(...values, 1000);
+  const max = Math.max(...values, 1000);
+  const span = Math.max(max - min, 1);
+  const points = values
+    .map((value, index) => {
+      const x = padding + (index / Math.max(values.length - 1, 1)) * (width - padding * 2);
+      const y = height - padding - ((value - min) / span) * (height - padding * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  return `
+    <svg class="inline-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Portfolio value chart">
+      <polyline points="${points}" fill="none" stroke="#0f766e" stroke-width="4" />
+    </svg>
+  `;
+}
+
+function renderInlineAllocationChart(holdings) {
+  if (!holdings.length) return `<div class="empty-chart">No holdings yet</div>`;
+  const max = Math.max(...holdings.map((holding) => Number(holding.market_value_usd || 0)), 1);
+  return `
+    <div class="inline-bars">
+      ${holdings
+        .map((holding) => {
+          const width = Math.max(2, (Number(holding.market_value_usd || 0) / max) * 100);
+          return `
+            <div>
+              <span>${escapeHtml(holding.ticker)}</span>
+              <div><i style="width:${width}%"></i></div>
+              <b>${formatUsd(holding.market_value_usd)}</b>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
 }
 
 init();

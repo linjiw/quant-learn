@@ -14,3 +14,8 @@ reports/history/
 public/
 .env
 .claude/
+data/local/
+reports/local/
+logs/
+site/ai-framework/local-portfolio-data.json
+site/ai-framework/local-portfolio/

@@ -20,6 +20,7 @@ REPORTS_TO_COPY = (
     PROJECT_ROOT / "reports" / "ai_execution_tracker.md",
     PROJECT_ROOT / "reports" / "ai_strategy_system.md",
 )
+LOCAL_ONLY_SITE_NAMES = {"local-portfolio-data.json", "local-portfolio"}
 
 
 def main() -> None:
@@ -40,7 +41,7 @@ def main() -> None:
 
     if output_dir.exists():
         shutil.rmtree(output_dir)
-    shutil.copytree(site_source_dir, output_dir)
+    shutil.copytree(site_source_dir, output_dir, ignore=_ignore_local_only_site_files)
 
     _stamp_research_data(output_dir / "research-data.js", data_date, review_date)
     _copy_reports(output_dir)
@@ -98,6 +99,12 @@ def _copy_reports(output_dir: Path) -> None:
     for report_path in REPORTS_TO_COPY:
         if report_path.exists():
             shutil.copy2(report_path, reports_dir / report_path.name)
+
+
+def _ignore_local_only_site_files(_directory: str, names: list[str]) -> set[str]:
+    """Prevent private local portfolio data from entering GitHub Pages artifacts."""
+
+    return {name for name in names if name in LOCAL_ONLY_SITE_NAMES}
 
 
 def _write_refresh_manifest(output_dir: Path, data_date: str, review_date: str) -> None:
