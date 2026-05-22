@@ -60,7 +60,7 @@ function init() {
   renderResearch();
   renderSources();
   renderClaims();
-  loadLocalPortfolio();
+  loadPortfolioPerformance();
 }
 
 function setupTabs() {
@@ -300,34 +300,34 @@ function renderClaims() {
     .join("");
 }
 
-async function loadLocalPortfolio() {
+async function loadPortfolioPerformance() {
   try {
-    const response = await fetch("./local-portfolio-data.json", { cache: "no-store" });
+    const response = await fetch("./portfolio-data.json", { cache: "no-store" });
     if (!response.ok) {
-      renderLocalPortfolioMissing();
+      renderPortfolioPerformanceMissing();
       return;
     }
     const portfolio = await response.json();
-    renderLocalPortfolio(portfolio);
+    renderPortfolioPerformance(portfolio);
   } catch {
-    renderLocalPortfolioMissing();
+    renderPortfolioPerformanceMissing();
   }
 }
 
-function renderLocalPortfolioMissing() {
-  const status = document.getElementById("localPortfolioStatus");
-  status.className = "local-status muted";
+function renderPortfolioPerformanceMissing() {
+  const status = document.getElementById("portfolioPerformanceStatus");
+  status.className = "portfolio-status muted";
   status.textContent =
-    "No local portfolio ledger found. Run `uv run python -m scripts.update_local_portfolio` from the repo root to initialize the private $1,000 tracker.";
+    "No portfolio ledger found yet. The daily GitHub workflow generates this $1,000 tracker from the versioned lot seed.";
 }
 
-function renderLocalPortfolio(portfolio) {
+function renderPortfolioPerformance(portfolio) {
   const summary = portfolio.summary || {};
-  const status = document.getElementById("localPortfolioStatus");
-  status.className = "local-status ready";
-  status.textContent = `Updated ${escapeHtml(portfolio.asOfDate)} from local-only data.`;
+  const status = document.getElementById("portfolioPerformanceStatus");
+  status.className = "portfolio-status ready";
+  status.textContent = `Updated ${escapeHtml(portfolio.asOfDate)} from the daily portfolio workflow.`;
 
-  const kpis = document.getElementById("localPortfolioKpis");
+  const kpis = document.getElementById("portfolioPerformanceKpis");
   kpis.hidden = false;
   kpis.innerHTML = [
     ["Total value", formatUsd(summary.total_value_usd), ""],
@@ -347,12 +347,12 @@ function renderLocalPortfolio(portfolio) {
     )
     .join("");
 
-  renderLocalPortfolioPlots(portfolio);
-  renderLocalPortfolioTable(portfolio);
+  renderPortfolioPerformancePlots(portfolio);
+  renderPortfolioPerformanceTable(portfolio);
 }
 
-function renderLocalPortfolioPlots(portfolio) {
-  const plots = document.getElementById("localPortfolioPlots");
+function renderPortfolioPerformancePlots(portfolio) {
+  const plots = document.getElementById("portfolioPerformancePlots");
   plots.hidden = false;
   const version = encodeURIComponent(portfolio.updatedAtUtc || Date.now());
   const valuePlot = portfolio.plots?.value;
@@ -377,9 +377,9 @@ function renderLocalPortfolioPlots(portfolio) {
   `;
 }
 
-function renderLocalPortfolioTable(portfolio) {
-  document.getElementById("localPortfolioTableWrap").hidden = false;
-  document.getElementById("localPortfolioRows").innerHTML = (portfolio.holdings || [])
+function renderPortfolioPerformanceTable(portfolio) {
+  document.getElementById("portfolioPerformanceTableWrap").hidden = false;
+  document.getElementById("portfolioPerformanceRows").innerHTML = (portfolio.holdings || [])
     .map((holding) => {
       const pnl = Number(holding.pnl_usd || 0);
       return `

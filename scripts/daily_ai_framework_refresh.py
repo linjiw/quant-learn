@@ -20,6 +20,7 @@ def main() -> None:
     parser.add_argument("--price-start", default="2018-01-01")
     parser.add_argument("--tsmc-years", nargs="*", type=int, default=None)
     parser.add_argument("--skip-market-data", action="store_true")
+    parser.add_argument("--skip-portfolio", action="store_true")
     parser.add_argument("--include-sec", action="store_true")
     parser.add_argument("--skip-link-audit", action="store_true")
     parser.add_argument("--pages-output", type=Path, default=PROJECT_ROOT / "public")
@@ -52,14 +53,25 @@ def main() -> None:
     print("== build AI strategy signals ==")
     _run_python_module("scripts.build_ai_strategy_signals")
 
+    if not args.skip_portfolio:
+        print("== update portfolio tracker ==")
+        portfolio_args = ["--skip-price-ingest"] if args.skip_market_data else []
+        _run_python_module("scripts.update_portfolio", *portfolio_args)
+
     print("== validate source site data ==")
-    _run_node("scripts/validate_ai_framework_site.mjs")
+    validate_args = ["--require-portfolio"] if not args.skip_portfolio else []
+    _run_node("scripts/validate_ai_framework_site.mjs", *validate_args)
 
     print("== build Pages artifact ==")
     _run_python_module("scripts.build_ai_framework_pages", "--output-dir", str(args.pages_output))
 
     print("== validate Pages artifact ==")
-    _run_node("scripts/validate_ai_framework_site.mjs", "--site-dir", str(args.pages_output))
+    _run_node(
+        "scripts/validate_ai_framework_site.mjs",
+        "--site-dir",
+        str(args.pages_output),
+        *validate_args,
+    )
 
     if not args.skip_link_audit:
         print("== audit source links ==")

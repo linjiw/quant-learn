@@ -515,16 +515,16 @@ a:hover {
   overflow-wrap: anywhere;
 }
 
-.local-portfolio-panel {
+.performance-panel {
   margin-bottom: 22px;
   padding: 18px;
 }
 
-.local-portfolio-head {
+.performance-head {
   margin-top: 0;
 }
 
-.local-status {
+.portfolio-status {
   margin-top: 10px;
   padding: 12px 14px;
   background: #f8faf8;
@@ -534,7 +534,7 @@ a:hover {
   line-height: 1.45;
 }
 
-.local-status.ready {
+.portfolio-status.ready {
   color: var(--accent-dark);
   background: var(--green-soft);
 }

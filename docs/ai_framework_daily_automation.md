@@ -11,9 +11,11 @@ Every morning, the workflow should:
 2. Import the AI framework manual snapshots.
 3. Rebuild AI framework tracker outputs.
 4. Rebuild AI strategy review signals.
-5. Validate the website data contract.
-6. Build a static `public/` artifact.
-7. Publish that artifact to GitHub Pages.
+5. Update the public $1,000 paper-portfolio tracker.
+6. Validate the website data contract.
+7. Build a static `public/` artifact.
+8. Publish that artifact to GitHub Pages.
+9. Commit changed portfolio history rows back to `main`.
 
 The workflow publishes the generated site artifact. It does not commit daily generated
 files back into the repository.
@@ -31,6 +33,9 @@ For a fast local smoke test that avoids network data pulls:
 ```bash
 uv run python -m scripts.daily_ai_framework_refresh --skip-market-data --skip-link-audit
 ```
+
+In smoke-test mode, the portfolio tracker reuses already stored prices instead
+of pulling fresh portfolio quotes.
 
 The generated site artifact is written to:
 
@@ -114,6 +119,7 @@ Orchestrates the daily refresh:
 - Optionally ingests SEC data if `--include-sec` and `SEC_USER_AGENT` are set.
 - Imports AI framework manual CSVs.
 - Builds tracker and strategy reports.
+- Updates the public portfolio tracker from versioned lots and current prices.
 - Validates source site data.
 - Builds the GitHub Pages artifact.
 - Validates the generated Pages artifact.
@@ -124,6 +130,7 @@ Orchestrates the daily refresh:
 Builds the deployable static site:
 
 - Copies `site/ai-framework/` into `public/`.
+- Includes generated portfolio JSON and plot images when present.
 - Stamps the generated `public/research-data.js` with:
   - latest manual data date,
   - current Los Angeles review date.
@@ -169,4 +176,5 @@ public site daily.
 - SEC ingestion depends on the optional `SEC_USER_AGENT` secret.
 - Some source links may return `403` to automation while still opening in a browser.
 - GitHub cron is UTC, not Pacific-time-aware.
-
+- Portfolio history persistence depends on the workflow's `contents: write`
+  permission and the generated `data/portfolio/*.csv` files.

@@ -16,6 +16,9 @@ public/
 .claude/
 data/local/
 reports/local/
+reports/portfolio/
 logs/
 site/ai-framework/local-portfolio-data.json
 site/ai-framework/local-portfolio/
+site/ai-framework/portfolio-data.json
+site/ai-framework/portfolio/

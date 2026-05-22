@@ -47,7 +47,7 @@ For the Phase 1 systematic-discretionary strategy workflow, see
 `docs/ai_strategy_system.md`.
 For the daily website refresh and GitHub Pages deployment workflow, see
 `docs/ai_framework_daily_automation.md`.
-For the private local paper-portfolio tracker, see `docs/local_portfolio_tracker.md`.
+For the public $1,000 paper-portfolio tracker, see `docs/portfolio_tracker.md`.
 
 ## Setup
 
@@ -220,10 +220,10 @@ uv run python -m scripts.build_ai_framework_tracker
 uv run python -m scripts.build_ai_strategy_signals
 ```
 
-Update the private local $1,000 portfolio tracker:
+Update the public $1,000 portfolio tracker:
 
 ```bash
-uv run python -m scripts.update_local_portfolio
+uv run python -m scripts.update_portfolio
 ```
 
 Notebook entry points:

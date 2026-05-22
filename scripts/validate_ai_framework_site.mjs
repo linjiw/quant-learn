@@ -8,7 +8,9 @@ const siteDir =
   siteDirArgIndex >= 0 && process.argv[siteDirArgIndex + 1]
     ? process.argv[siteDirArgIndex + 1]
     : path.join("site", "ai-framework");
+const requirePortfolio = process.argv.includes("--require-portfolio");
 const dataPath = path.resolve(repoRoot, siteDir, "research-data.js");
+const portfolioDataPath = path.resolve(repoRoot, siteDir, "portfolio-data.json");
 const code = fs.readFileSync(dataPath, "utf8");
 const sandbox = { window: {} };
 
@@ -265,6 +267,72 @@ if (!isObject(data)) {
   }
 }
 
+if (fs.existsSync(portfolioDataPath) || requirePortfolio) {
+  validatePortfolioData(portfolioDataPath);
+}
+
+function validatePortfolioData(filePath) {
+  if (!fs.existsSync(filePath)) {
+    errors.push(`portfolio-data.json is required but missing in ${siteDir}`);
+    return;
+  }
+  let portfolio;
+  try {
+    portfolio = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch (error) {
+    errors.push(`portfolio-data.json is not valid JSON: ${error.message}`);
+    return;
+  }
+  if (!isObject(portfolio)) {
+    errors.push("portfolio-data.json must contain an object");
+    return;
+  }
+  for (const field of ["asOfDate", "baseCurrency", "initialCapitalUsd", "summary", "holdings", "history"]) {
+    requireField(portfolio, field, "portfolio");
+  }
+  validateDate(portfolio.asOfDate, "portfolio", "asOfDate");
+  if (portfolio.baseCurrency !== "USD") {
+    errors.push(`portfolio baseCurrency must be USD, got ${portfolio.baseCurrency}`);
+  }
+  if (Number(portfolio.initialCapitalUsd) !== 1000) {
+    errors.push(`portfolio initialCapitalUsd must be 1000, got ${portfolio.initialCapitalUsd}`);
+  }
+  if (!isObject(portfolio.summary)) {
+    errors.push("portfolio summary must be an object");
+  } else {
+    for (const field of ["total_value_usd", "pnl_usd", "return_pct", "daily_pnl_usd", "daily_return_pct"]) {
+      if (!Number.isFinite(Number(portfolio.summary[field]))) {
+        errors.push(`portfolio summary ${field} must be numeric`);
+      }
+    }
+  }
+  if (!Array.isArray(portfolio.holdings) || portfolio.holdings.length !== 14) {
+    errors.push(`portfolio holdings must have 14 rows, got ${portfolio.holdings?.length}`);
+  } else {
+    const tickers = new Set();
+    const weightTotal = portfolio.holdings.reduce((sum, holding) => {
+      for (const field of ["ticker", "holding_name", "target_weight", "market_value_usd", "price_usd", "pnl_usd"]) {
+        requireField(holding, field, `portfolio holding ${holding.ticker || "(unknown)"}`);
+      }
+      tickers.add(holding.ticker);
+      return sum + Number(holding.target_weight || 0);
+    }, 0);
+    if (!tickers.has("CASH")) errors.push("portfolio holdings must include CASH");
+    if (Math.abs(weightTotal - 100) > 0.0001) {
+      errors.push(`portfolio target weights must sum to 100, got ${weightTotal}`);
+    }
+  }
+  if (!Array.isArray(portfolio.history) || portfolio.history.length === 0) {
+    errors.push("portfolio history must have at least one row");
+  }
+  for (const [label, plotPath] of Object.entries(portfolio.plots || {})) {
+    const cleanPath = String(plotPath).replace(/^\.\//, "");
+    if (!fs.existsSync(path.resolve(repoRoot, siteDir, cleanPath))) {
+      errors.push(`portfolio plot ${label} is missing: ${plotPath}`);
+    }
+  }
+}
+
 const summary = {
   holdings: data?.holdings?.length || 0,
   totalWeight: (data?.holdings || []).reduce((sum, holding) => sum + (holding.weight || 0), 0),
@@ -274,6 +342,7 @@ const summary = {
   claims: data?.claims?.length || 0,
   signals: data?.signals?.length || 0,
   monitoringQuestions: data?.monitoringQuestions?.length || 0,
+  portfolio: fs.existsSync(portfolioDataPath) ? "present" : "missing",
   warnings,
   errors
 };

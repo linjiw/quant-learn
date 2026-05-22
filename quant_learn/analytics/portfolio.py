@@ -1,7 +1,8 @@
-"""Local-only portfolio tracker for the AI framework allocation.
+"""Portfolio tracker for the AI framework allocation.
 
-This module deliberately writes personal portfolio state to gitignored paths.
-The public GitHub Pages artifact must not include these files.
+The default mode is public and GitHub-Pages friendly: initial lots and daily
+history are stored in versioned data files, while generated site artifacts are
+rebuilt by the workflow.
 """
 
 from __future__ import annotations
@@ -22,14 +23,14 @@ from quant_learn.config import DATA_DIR, MANUAL_DIR, PROJECT_ROOT, ensure_direct
 from quant_learn.db import connect, initialize_database
 from quant_learn.ingest.prices import ingest_prices
 
-LOCAL_DATA_DIR = DATA_DIR / "local"
-LOCAL_REPORT_DIR = PROJECT_ROOT / "reports" / "local"
-LOCAL_SITE_DIR = PROJECT_ROOT / "site" / "ai-framework"
-LOCAL_SITE_PORTFOLIO_DIR = LOCAL_SITE_DIR / "local-portfolio"
-LOCAL_CONFIG_PATH = LOCAL_DATA_DIR / "ai_portfolio_lots.json"
-LOCAL_SNAPSHOTS_PATH = LOCAL_DATA_DIR / "ai_portfolio_snapshots.csv"
-LOCAL_SUMMARY_PATH = LOCAL_DATA_DIR / "ai_portfolio_summary.csv"
-LOCAL_SITE_DATA_PATH = LOCAL_SITE_DIR / "local-portfolio-data.json"
+PORTFOLIO_DATA_DIR = DATA_DIR / "portfolio"
+PORTFOLIO_REPORT_DIR = PROJECT_ROOT / "reports" / "portfolio"
+SITE_DIR = PROJECT_ROOT / "site" / "ai-framework"
+SITE_PORTFOLIO_DIR = SITE_DIR / "portfolio"
+PORTFOLIO_CONFIG_PATH = MANUAL_DIR / "ai_portfolio_lots.json"
+PORTFOLIO_SNAPSHOTS_PATH = PORTFOLIO_DATA_DIR / "ai_portfolio_snapshots.csv"
+PORTFOLIO_SUMMARY_PATH = PORTFOLIO_DATA_DIR / "ai_portfolio_summary.csv"
+SITE_DATA_PATH = SITE_DIR / "portfolio-data.json"
 
 BASE_CURRENCY = "USD"
 DEFAULT_INITIAL_CAPITAL = 1000.0
@@ -96,17 +97,27 @@ class PortfolioConfig:
     lots: list[PortfolioLot]
 
 
-def update_local_portfolio(
+def update_portfolio(
     *,
     initial_capital: float = DEFAULT_INITIAL_CAPITAL,
     holdings_path: Path = PORTFOLIO_HOLDINGS_PATH,
+    config_path: Path = PORTFOLIO_CONFIG_PATH,
+    snapshots_path: Path = PORTFOLIO_SNAPSHOTS_PATH,
+    summary_path: Path = PORTFOLIO_SUMMARY_PATH,
+    site_data_path: Path = SITE_DATA_PATH,
+    report_dir: Path = PORTFOLIO_REPORT_DIR,
+    site_portfolio_dir: Path = SITE_PORTFOLIO_DIR,
     snapshot_date: date | None = None,
     ingest_latest_prices: bool = True,
     force_reinitialize: bool = False,
 ) -> dict:
-    """Update the local portfolio ledger and site data."""
+    """Update the portfolio ledger and generated site data."""
 
-    ensure_local_directories()
+    ensure_portfolio_directories(
+        data_dir=snapshots_path.parent,
+        report_dir=report_dir,
+        site_portfolio_dir=site_portfolio_dir,
+    )
     run_date = snapshot_date or date.today()
     holdings = load_framework_holdings(holdings_path)
     tickers = portfolio_price_tickers(holdings["ticker"].tolist())
@@ -123,23 +134,34 @@ def update_local_portfolio(
         initial_capital=initial_capital,
         start_date=run_date,
         holdings_path=holdings_path,
+        config_path=config_path,
         force_reinitialize=force_reinitialize,
     )
     snapshot = build_snapshot(config=config, latest_prices=latest_prices, snapshot_date=run_date)
-    summary = build_summary(config=config, snapshot=snapshot, snapshot_date=run_date)
+    summary = build_summary(
+        config=config,
+        snapshot=snapshot,
+        snapshot_date=run_date,
+        summary_path=summary_path,
+    )
 
     upsert_csv(
-        LOCAL_SNAPSHOTS_PATH,
+        snapshots_path,
         snapshot,
         SNAPSHOT_COLUMNS,
         "snapshot_date",
         run_date.isoformat(),
     )
-    upsert_csv(LOCAL_SUMMARY_PATH, summary, SUMMARY_COLUMNS, "snapshot_date", run_date.isoformat())
+    upsert_csv(summary_path, summary, SUMMARY_COLUMNS, "snapshot_date", run_date.isoformat())
 
-    summary_history = read_csv_if_exists(LOCAL_SUMMARY_PATH, SUMMARY_COLUMNS)
-    snapshot_history = read_csv_if_exists(LOCAL_SNAPSHOTS_PATH, SNAPSHOT_COLUMNS)
-    plot_paths = write_plots(summary_history=summary_history, latest_snapshot=snapshot)
+    summary_history = read_csv_if_exists(summary_path, SUMMARY_COLUMNS)
+    snapshot_history = read_csv_if_exists(snapshots_path, SNAPSHOT_COLUMNS)
+    plot_paths = write_plots(
+        summary_history=summary_history,
+        latest_snapshot=snapshot,
+        report_dir=report_dir,
+        site_portfolio_dir=site_portfolio_dir,
+    )
     site_data = build_site_data(
         config=config,
         latest_snapshot=snapshot,
@@ -147,13 +169,18 @@ def update_local_portfolio(
         snapshot_history=snapshot_history,
         plot_paths=plot_paths,
     )
-    write_json(LOCAL_SITE_DATA_PATH, site_data)
+    write_json(site_data_path, site_data)
     return site_data
 
 
-def ensure_local_directories() -> None:
+def ensure_portfolio_directories(
+    *,
+    data_dir: Path,
+    report_dir: Path,
+    site_portfolio_dir: Path,
+) -> None:
     ensure_directories()
-    for path in (LOCAL_DATA_DIR, LOCAL_REPORT_DIR, LOCAL_SITE_PORTFOLIO_DIR):
+    for path in (data_dir, report_dir, site_portfolio_dir):
         path.mkdir(parents=True, exist_ok=True)
 
 
@@ -221,10 +248,11 @@ def load_or_create_config(
     initial_capital: float,
     start_date: date,
     holdings_path: Path,
+    config_path: Path = PORTFOLIO_CONFIG_PATH,
     force_reinitialize: bool = False,
 ) -> PortfolioConfig:
-    if LOCAL_CONFIG_PATH.exists() and not force_reinitialize:
-        return read_config(LOCAL_CONFIG_PATH)
+    if config_path.exists() and not force_reinitialize:
+        return read_config(config_path)
 
     lots = []
     for _, holding in holdings.iterrows():
@@ -280,7 +308,7 @@ def load_or_create_config(
         holdings_source=display_path(holdings_path),
         lots=lots,
     )
-    write_config(LOCAL_CONFIG_PATH, config)
+    write_config(config_path, config)
     return config
 
 
@@ -353,8 +381,9 @@ def build_summary(
     config: PortfolioConfig,
     snapshot: pd.DataFrame,
     snapshot_date: date,
+    summary_path: Path = PORTFOLIO_SUMMARY_PATH,
 ) -> pd.DataFrame:
-    previous = latest_summary_before(snapshot_date)
+    previous = latest_summary_before(snapshot_date, summary_path=summary_path)
     total_value = float(snapshot["market_value_usd"].sum())
     cash_value = float(snapshot.loc[snapshot["ticker"] == "CASH", "market_value_usd"].sum())
     invested_value = total_value - cash_value
@@ -397,8 +426,12 @@ def build_summary(
     )
 
 
-def latest_summary_before(snapshot_date: date) -> pd.Series | None:
-    frame = read_csv_if_exists(LOCAL_SUMMARY_PATH, SUMMARY_COLUMNS)
+def latest_summary_before(
+    snapshot_date: date,
+    *,
+    summary_path: Path = PORTFOLIO_SUMMARY_PATH,
+) -> pd.Series | None:
+    frame = read_csv_if_exists(summary_path, SUMMARY_COLUMNS)
     if frame.empty:
         return None
     frame["snapshot_date"] = pd.to_datetime(frame["snapshot_date"]).dt.date
@@ -429,19 +462,25 @@ def read_csv_if_exists(path: Path, columns: list[str]) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
-def write_plots(*, summary_history: pd.DataFrame, latest_snapshot: pd.DataFrame) -> dict[str, str]:
-    report_value = LOCAL_REPORT_DIR / "ai_portfolio_value.png"
-    report_allocation = LOCAL_REPORT_DIR / "ai_portfolio_allocation.png"
-    site_value = LOCAL_SITE_PORTFOLIO_DIR / "portfolio-value.png"
-    site_allocation = LOCAL_SITE_PORTFOLIO_DIR / "portfolio-allocation.png"
+def write_plots(
+    *,
+    summary_history: pd.DataFrame,
+    latest_snapshot: pd.DataFrame,
+    report_dir: Path = PORTFOLIO_REPORT_DIR,
+    site_portfolio_dir: Path = SITE_PORTFOLIO_DIR,
+) -> dict[str, str]:
+    report_value = report_dir / "ai_portfolio_value.png"
+    report_allocation = report_dir / "ai_portfolio_allocation.png"
+    site_value = site_portfolio_dir / "portfolio-value.png"
+    site_allocation = site_portfolio_dir / "portfolio-allocation.png"
 
     plot_value_history(summary_history, report_value)
     plot_allocation(latest_snapshot, report_allocation)
     shutil.copyfile(report_value, site_value)
     shutil.copyfile(report_allocation, site_allocation)
     return {
-        "value": "./local-portfolio/portfolio-value.png",
-        "allocation": "./local-portfolio/portfolio-allocation.png",
+        "value": "./portfolio/portfolio-value.png",
+        "allocation": "./portfolio/portfolio-allocation.png",
     }
 
 
@@ -507,7 +546,7 @@ def build_site_data(
             )
         ],
         "plots": plot_paths,
-        "privacy": "local-only; this file is gitignored and excluded from GitHub Pages builds",
+        "publication": "public GitHub Pages tracker backed by versioned initial lots and history",
     }
 
 

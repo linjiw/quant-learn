@@ -11,14 +11,15 @@ site/ai-framework/index.html
 The site has no build step. Research content lives in `research-data.js`; layout
 and interaction live in `styles.css` and `app.js`.
 
-The optional personal performance panel reads `local-portfolio-data.json` when
-that gitignored file exists locally. Generate it from the repo root:
+The personal performance panel reads generated `portfolio-data.json`. Generate
+it from the repo root:
 
 ```bash
-uv run python -m scripts.update_local_portfolio
+uv run python -m scripts.update_portfolio
 ```
 
-These local portfolio files are excluded from GitHub Pages builds.
+The daily GitHub workflow publishes the generated portfolio JSON and plot images
+to GitHub Pages.
 
 Validate the data contract:
 

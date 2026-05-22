@@ -66,11 +66,10 @@ uv run python -m scripts.daily_ai_framework_refresh
 uv run python -m scripts.daily_ai_framework_refresh --skip-market-data --skip-link-audit
 ```
 
-Private local portfolio tracker:
+Public paper-portfolio tracker:
 
 ```bash
-uv run python -m scripts.update_local_portfolio
-uv run python -m scripts.install_local_portfolio_launchd --load
+uv run python -m scripts.update_portfolio
 ```
 
 Static framework website:
@@ -115,9 +114,11 @@ Main directories:
 - `data/manual/`: versioned seed CSVs for manually reviewed inputs.
 - `reports/`: generated markdown reports and QA screenshots.
 - `site/ai-framework/`: static dashboard for the trusted-execution framework.
-- `data/local/`, `reports/local/`, and `site/ai-framework/local-portfolio*`:
-  private local portfolio state; these paths are gitignored and must not be
-  copied into GitHub Pages artifacts.
+- `data/manual/ai_portfolio_lots.json`: versioned $1,000 portfolio cost basis.
+- `data/portfolio/`: versioned daily public portfolio history committed by the
+  GitHub Pages workflow after successful refresh/test runs.
+- `site/ai-framework/portfolio-data.json` and `site/ai-framework/portfolio/`:
+  generated Pages artifacts; keep them gitignored locally and rebuild them.
 
 ## Database and Schema Rules
 
